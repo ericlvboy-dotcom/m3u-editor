@@ -668,7 +668,7 @@ class PlaylistGenerateController extends Controller
             // Some imported channels retain their category in the legacy channels.group
             // column even when no groups relation exists. Fall back to it so group labels
             // (and prefixes) are never silently lost.
-            ->selectRaw("COALESCE(NULLIF(groups.name, ''), NULLIF(channels.`group`, ''), NULLIF(channels.group_internal, '')) as group_name")
+            ->selectRaw("COALESCE(NULLIF(groups.name, ''), NULLIF(channels."group", ''), NULLIF(channels.group_internal, '')) as group_name")
             ->selectRaw('groups.sort_order as group_sort_order');
 
         // Merged playlists need the source playlist's prefix for each channel.
@@ -712,7 +712,7 @@ class PlaylistGenerateController extends Controller
         } elseif ($isMergedPlaylist) {
             // Sort merged output by the final group label (prefix + source group),
             // so groups are alphabetical A-Z after prefixes have been applied.
-            $query->orderByRaw("LOWER(TRIM(CONCAT(TRIM(COALESCE(source_playlists.prefix, '')), ' ', TRIM(COALESCE(NULLIF(groups.name, ''), NULLIF(channels.`group`, ''), NULLIF(channels.group_internal, ''))))))")
+            $query->orderByRaw("LOWER(TRIM(CONCAT(TRIM(COALESCE(source_playlists.prefix, '')), ' ', TRIM(COALESCE(NULLIF(groups.name, ''), NULLIF(channels."group", ''), NULLIF(channels.group_internal, ''))))))")
                 ->orderBy('channels.sort')
                 ->orderBy('channels.channel')
                 ->orderBy('channels.title');
