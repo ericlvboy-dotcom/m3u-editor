@@ -712,7 +712,7 @@ class PlaylistGenerateController extends Controller
         } elseif ($isMergedPlaylist) {
             // Sort merged output by the final group label (prefix + source group),
             // so groups are alphabetical A-Z after prefixes have been applied.
-            $query->orderByRaw("LOWER(TRIM(CONCAT(TRIM(COALESCE(source_playlists.prefix, '')), ' ', TRIM(COALESCE(NULLIF(groups.name, ''), NULLIF(channels."group", ''), NULLIF(channels.group_internal, ''))))))")
+            $query->orderByRaw("LOWER(TRIM(CONCAT(TRIM(COALESCE(source_playlists.prefix, '')), ' ', TRIM(COALESCE(NULLIF(groups.name, ''), NULLIF(channels.\"group\", ''), NULLIF(channels.group_internal, ''))))))")
                 ->orderBy('channels.sort')
                 ->orderBy('channels.channel')
                 ->orderBy('channels.title');
