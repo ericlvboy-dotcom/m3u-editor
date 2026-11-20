@@ -136,8 +136,13 @@ class PlaylistGenerateController extends Controller
                     $stationId = $channel->station_id ?? '';
                     $epgShift = $channel->tvg_shift ?? 0;
                     $group = $channel->group_name ?? '';
-                    if ($type === 'merged' && $group !== '') {
-                        $sourcePrefix = trim((string) ($channel->source_group_prefix ?? ''));
+                    if ($group !== '') {
+                        // A standard playlist's own URL must carry its configured prefix too.
+                        // This lets another M3U editor import the generated URL without losing
+                        // the source prefix. Merged playlists use the prefix of each source row.
+                        $sourcePrefix = $type === 'merged'
+                            ? trim((string) ($channel->source_group_prefix ?? ''))
+                            : ($type === 'standard' ? trim((string) ($playlist->prefix ?? '')) : '');
                         if ($sourcePrefix !== '') {
                             $group = $sourcePrefix.' '.trim($group);
                         }
