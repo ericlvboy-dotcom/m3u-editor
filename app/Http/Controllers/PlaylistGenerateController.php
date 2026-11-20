@@ -645,7 +645,16 @@ class PlaylistGenerateController extends Controller
         // results rather than loading all channels into memory.
         $playlistUuid = $playlist->uuid;
         $isMergedPlaylist = $playlist instanceof \App\Models\MergedPlaylist;
-        $query = $playlist->channels()
+        // Build merged channel membership explicitly from the pivot table.
+        // This avoids relying on the HasManyThrough pivot relationship when generating
+        // the public M3U, while keeping standard/custom playlist relationships unchanged.
+        $channelQuery = $isMergedPlaylist
+            ? Channel::query()
+                ->join('merged_playlist_playlist as merged_sources', 'channels.playlist_id', '=', 'merged_sources.playlist_id')
+                ->where('merged_sources.merged_playlist_id', $playlist->id)
+            : $playlist->channels();
+
+        $query = $channelQuery
             ->leftJoin('groups', 'channels.group_id', '=', 'groups.id')
             ->where('channels.enabled', true)
             ->when(! $playlist->include_vod_in_m3u, function ($q) {
