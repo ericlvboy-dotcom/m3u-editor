@@ -136,6 +136,12 @@ class PlaylistGenerateController extends Controller
                     $stationId = $channel->station_id ?? '';
                     $epgShift = $channel->tvg_shift ?? 0;
                     $group = $channel->group ?? '';
+                    if ($type === 'merged' && $group !== '') {
+                        $sourcePrefix = trim((string) ($channel->source_group_prefix ?? ''));
+                        if ($sourcePrefix !== '') {
+                            $group = $sourcePrefix.' '.ltrim($group);
+                        }
+                    }
                     if (! $channelNo && ($playlist->auto_channel_increment || $idChannelBy === PlaylistChannelId::Number)) {
                         $channelNo = ++$channelNumber;
                     }
@@ -633,6 +639,7 @@ class PlaylistGenerateController extends Controller
         // Build the base query for channels. We'll use cursor() to stream
         // results rather than loading all channels into memory.
         $playlistUuid = $playlist->uuid;
+        $isMergedPlaylist = $playlist instanceof \App\Models\MergedPlaylist;
         $query = $playlist->channels()
             ->leftJoin('groups', 'channels.group_id', '=', 'groups.id')
             ->where('channels.enabled', true)
@@ -644,6 +651,13 @@ class PlaylistGenerateController extends Controller
             ->selectRaw('channels.*')
             ->selectRaw('groups.name as group_name')
             ->selectRaw('groups.sort_order as group_sort_order');
+
+        // Merged playlists need the source playlist's prefix for each channel.
+        // Keeping this join conditional leaves standard/custom playlist queries unchanged.
+        if ($isMergedPlaylist) {
+            $query->leftJoin('playlists as source_playlists', 'channels.playlist_id', '=', 'source_playlists.id')
+                ->selectRaw('source_playlists.prefix as source_group_prefix');
+        }
 
         // Join EPG channel data to avoid N+1 queries and select common fields
         $query->leftJoin('epg_channels', 'channels.epg_channel_id', '=', 'epg_channels.id')
@@ -676,8 +690,15 @@ class PlaylistGenerateController extends Controller
             // We'll decode it in PHP to extract the locale-specific value
             $query->selectRaw('custom_tags.name as custom_group_name')
                 ->selectRaw('custom_tags.order_column as custom_order');
+        } elseif ($isMergedPlaylist) {
+            // Sort merged output by the final group label (prefix + source group),
+            // so groups are alphabetical A-Z after prefixes have been applied.
+            $query->orderByRaw("LOWER(TRIM(CONCAT(COALESCE(source_playlists.prefix, ''), ' ', COALESCE(channels.group, ''))))")
+                ->orderBy('channels.sort')
+                ->orderBy('channels.channel')
+                ->orderBy('channels.title');
         } else {
-            // Standard ordering for non-custom playlists
+            // Preserve the existing source-group order for standard playlists.
             $query->orderBy('groups.sort_order')
                 ->orderBy('channels.sort')
                 ->orderBy('channels.channel')

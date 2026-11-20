@@ -1054,6 +1054,11 @@ class PlaylistResource extends Resource
             TextInput::make('name')
                 ->helperText('Enter the name of the playlist. Internal use only.')
                 ->required(),
+            TextInput::make('prefix')
+                ->label('Merged output group prefix')
+                ->placeholder('e.g. UK -')
+                ->maxLength(100)
+                ->helperText('Applied to this source’s group names only when it is included in a merged playlist. A space is added after the prefix. Leave blank to keep the original group names.'),
             Grid::make()
                 ->columnSpanFull()
                 ->columns(3)
