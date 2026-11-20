@@ -135,7 +135,18 @@ class PlaylistGenerateController extends Controller
                     $timeshift = $channel->shift ?? 0;
                     $stationId = $channel->station_id ?? '';
                     $epgShift = $channel->tvg_shift ?? 0;
-                    $group = $channel->group ?? '';
+                    $group = $channel->group_name ?? '';
+                    if ($group !== '') {
+                        // A standard playlist's own URL must carry its configured prefix too.
+                        // This lets another M3U editor import the generated URL without losing
+                        // the source prefix. Merged playlists use the prefix of each source row.
+                        $sourcePrefix = $type === 'merged'
+                            ? trim((string) ($channel->source_group_prefix ?? ''))
+                            : ($type === 'standard' ? trim((string) ($playlist->prefix ?? '')) : '');
+                        if ($sourcePrefix !== '') {
+                            $group = $sourcePrefix.' '.trim($group);
+                        }
+                    }
                     if (! $channelNo && ($playlist->auto_channel_increment || $idChannelBy === PlaylistChannelId::Number)) {
                         $channelNo = ++$channelNumber;
                     }
@@ -633,7 +644,19 @@ class PlaylistGenerateController extends Controller
         // Build the base query for channels. We'll use cursor() to stream
         // results rather than loading all channels into memory.
         $playlistUuid = $playlist->uuid;
-        $query = $playlist->channels()
+        $isMergedPlaylist = $playlist instanceof \App\Models\MergedPlaylist;
+        // Build merged channel membership explicitly from the pivot table.
+        // This avoids relying on the HasManyThrough pivot relationship when generating
+        // the public M3U, while keeping standard/custom playlist relationships unchanged.
+        $channelQuery = $isMergedPlaylist
+            ? Channel::query()->whereIn('channels.playlist_id', function ($subquery) use ($playlist) {
+                $subquery->select('playlist_id')
+                    ->from('merged_playlist_playlist')
+                    ->where('merged_playlist_id', $playlist->id);
+            })
+            : $playlist->channels();
+
+        $query = $channelQuery
             ->leftJoin('groups', 'channels.group_id', '=', 'groups.id')
             ->where('channels.enabled', true)
             ->when(! $playlist->include_vod_in_m3u, function ($q) {
@@ -642,8 +665,18 @@ class PlaylistGenerateController extends Controller
             // Select the channel columns and also pull through group name and (for custom)
             // the custom tag name/order so we can order in SQL and avoid a PHP-side resort.
             ->selectRaw('channels.*')
-            ->selectRaw('groups.name as group_name')
+            // Some imported channels retain their category in the legacy channels.group
+            // column even when no groups relation exists. Fall back to it so group labels
+            // (and prefixes) are never silently lost.
+            ->selectRaw('COALESCE(NULLIF(groups.name, \'\'), NULLIF(channels."group", \'\'), NULLIF(channels.group_internal, \'\')) as group_name')
             ->selectRaw('groups.sort_order as group_sort_order');
+
+        // Merged playlists need the source playlist's prefix for each channel.
+        // Keeping this join conditional leaves standard/custom playlist queries unchanged.
+        if ($isMergedPlaylist) {
+            $query->leftJoin('playlists as source_playlists', 'channels.playlist_id', '=', 'source_playlists.id')
+                ->selectRaw('source_playlists.prefix as source_group_prefix');
+        }
 
         // Join EPG channel data to avoid N+1 queries and select common fields
         $query->leftJoin('epg_channels', 'channels.epg_channel_id', '=', 'epg_channels.id')
@@ -676,8 +709,15 @@ class PlaylistGenerateController extends Controller
             // We'll decode it in PHP to extract the locale-specific value
             $query->selectRaw('custom_tags.name as custom_group_name')
                 ->selectRaw('custom_tags.order_column as custom_order');
+        } elseif ($isMergedPlaylist) {
+            // Sort merged output by the final group label (prefix + source group),
+            // so groups are alphabetical A-Z after prefixes have been applied.
+            $query->orderByRaw("LOWER(TRIM(CONCAT(TRIM(COALESCE(source_playlists.prefix, '')), ' ', TRIM(COALESCE(NULLIF(groups.name, ''), NULLIF(channels.\"group\", ''), NULLIF(channels.group_internal, ''))))))")
+                ->orderBy('channels.sort')
+                ->orderBy('channels.channel')
+                ->orderBy('channels.title');
         } else {
-            // Standard ordering for non-custom playlists
+            // Preserve the existing source-group order for standard playlists.
             $query->orderBy('groups.sort_order')
                 ->orderBy('channels.sort')
                 ->orderBy('channels.channel')
