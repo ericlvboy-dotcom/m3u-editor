@@ -1058,7 +1058,7 @@ class PlaylistResource extends Resource
                 ->label('Merged output group prefix')
                 ->placeholder('e.g. UK -')
                 ->maxLength(100)
-                ->helperText('Applied to this source’s group names only when it is included in a merged playlist. A space is added after the prefix. Leave blank to keep the original group names.'),
+                ->helperText('Applied to this playlist’s generated M3U and when included in a merged playlist. A space is added after the prefix. Leave blank to keep the original group names.'),
             Grid::make()
                 ->columnSpanFull()
                 ->columns(3)
