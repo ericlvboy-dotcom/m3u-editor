@@ -135,7 +135,7 @@ class PlaylistGenerateController extends Controller
                     $timeshift = $channel->shift ?? 0;
                     $stationId = $channel->station_id ?? '';
                     $epgShift = $channel->tvg_shift ?? 0;
-                    $group = $channel->group ?? '';
+                    $group = $channel->group_name ?? '';
                     if ($type === 'merged' && $group !== '') {
                         $sourcePrefix = trim((string) ($channel->source_group_prefix ?? ''));
                         if ($sourcePrefix !== '') {
@@ -693,7 +693,7 @@ class PlaylistGenerateController extends Controller
         } elseif ($isMergedPlaylist) {
             // Sort merged output by the final group label (prefix + source group),
             // so groups are alphabetical A-Z after prefixes have been applied.
-            $query->orderByRaw("LOWER(TRIM(CONCAT(TRIM(COALESCE(source_playlists.prefix, '')), ' ', TRIM(COALESCE(channels.`group`, '')))))")
+            $query->orderByRaw("LOWER(TRIM(CONCAT(TRIM(COALESCE(source_playlists.prefix, '')), ' ', TRIM(COALESCE(groups.name, '')))))")
                 ->orderBy('channels.sort')
                 ->orderBy('channels.channel')
                 ->orderBy('channels.title');
