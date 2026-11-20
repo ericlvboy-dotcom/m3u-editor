@@ -649,9 +649,11 @@ class PlaylistGenerateController extends Controller
         // This avoids relying on the HasManyThrough pivot relationship when generating
         // the public M3U, while keeping standard/custom playlist relationships unchanged.
         $channelQuery = $isMergedPlaylist
-            ? Channel::query()
-                ->join('merged_playlist_playlist as merged_sources', 'channels.playlist_id', '=', 'merged_sources.playlist_id')
-                ->where('merged_sources.merged_playlist_id', $playlist->id)
+            ? Channel::query()->whereIn('channels.playlist_id', function ($subquery) use ($playlist) {
+                $subquery->select('playlist_id')
+                    ->from('merged_playlist_playlist')
+                    ->where('merged_playlist_id', $playlist->id);
+            })
             : $playlist->channels();
 
         $query = $channelQuery
@@ -663,7 +665,10 @@ class PlaylistGenerateController extends Controller
             // Select the channel columns and also pull through group name and (for custom)
             // the custom tag name/order so we can order in SQL and avoid a PHP-side resort.
             ->selectRaw('channels.*')
-            ->selectRaw('groups.name as group_name')
+            // Some imported channels retain their category in the legacy channels.group
+            // column even when no groups relation exists. Fall back to it so group labels
+            // (and prefixes) are never silently lost.
+            ->selectRaw("COALESCE(NULLIF(groups.name, ''), NULLIF(channels.`group`, ''), NULLIF(channels.group_internal, '')) as group_name")
             ->selectRaw('groups.sort_order as group_sort_order');
 
         // Merged playlists need the source playlist's prefix for each channel.
@@ -707,7 +712,7 @@ class PlaylistGenerateController extends Controller
         } elseif ($isMergedPlaylist) {
             // Sort merged output by the final group label (prefix + source group),
             // so groups are alphabetical A-Z after prefixes have been applied.
-            $query->orderByRaw("LOWER(TRIM(CONCAT(TRIM(COALESCE(source_playlists.prefix, '')), ' ', TRIM(COALESCE(groups.name, '')))))")
+            $query->orderByRaw("LOWER(TRIM(CONCAT(TRIM(COALESCE(source_playlists.prefix, '')), ' ', TRIM(COALESCE(NULLIF(groups.name, ''), NULLIF(channels.`group`, ''), NULLIF(channels.group_internal, ''))))))")
                 ->orderBy('channels.sort')
                 ->orderBy('channels.channel')
                 ->orderBy('channels.title');
