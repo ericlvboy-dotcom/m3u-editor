@@ -131,6 +131,47 @@ class ListGroups extends ListRecords
                     Notification::make()->success()->title(__('Live TV group prefixes updated'))
                         ->body(__(':count groups updated.', ['count' => $updated]))->send();
                 }),
+            Action::make('merge-identical-live-groups')
+                ->label(__('Merge Identically Named Live Groups'))
+                ->icon('heroicon-o-rectangle-group')
+                ->schema([
+                    Select::make('playlist_id')->label(__('Merged playlist'))
+                        ->options(fn () => Playlist::query()->where('user_id', auth()->id())->orderBy('name')->pluck('name', 'id'))
+                        ->required()->searchable(),
+                ])
+                ->requiresConfirmation()
+                ->modalDescription(__('Within the selected playlist only, groups with the same displayed name are combined into a merged container. Every channel is retained; original groups and stream URLs are preserved.'))
+                ->action(function (array $data): void {
+                    $playlist = Playlist::query()->where('user_id', auth()->id())->findOrFail($data['playlist_id']);
+                    $sets = Group::query()->where('user_id', auth()->id())->where('playlist_id', $playlist->id)
+                        ->where('type', 'live')->whereNull('parent_id')->get()
+                        ->groupBy(fn (Group $group) => mb_strtolower(trim($group->name ?: $group->name_internal ?: '')))
+                        ->filter(fn ($groups, $name) => $name !== '' && $groups->count() > 1);
+                    $mergedCount = 0;
+                    DB::transaction(function () use ($sets, $playlist, &$mergedCount): void {
+                        foreach ($sets as $groups) {
+                            $existing = $groups->first(fn (Group $group) => $group->is_merged);
+                            $children = $groups->filter(fn (Group $group) => ! $group->is_merged);
+                            if ($children->isEmpty()) {
+                                continue;
+                            }
+                            $merged = $existing ?? Group::query()->create([
+                                'user_id' => auth()->id(),
+                                'playlist_id' => $playlist->id,
+                                'type' => 'live',
+                                'custom' => true,
+                                'is_merged' => true,
+                                'name' => $groups->first()->name ?: $groups->first()->name_internal,
+                                'name_internal' => $groups->first()->name ?: $groups->first()->name_internal,
+                                'sort_order' => $groups->min('sort_order') ?? 9999,
+                            ]);
+                            MergedGroupService::syncGroupChildren($merged, $children->pluck('id')->all(), false);
+                            $mergedCount++;
+                        }
+                    });
+                    Notification::make()->success()->title(__('Matching Live TV groups combined'))
+                        ->body(__(':count merged groups updated.', ['count' => $mergedCount]))->send();
+                }),
             Action::make('format-live-group-names')
                 ->label(__('Format Live Group Names'))
                 ->icon('heroicon-o-bars-3-bottom-left')
