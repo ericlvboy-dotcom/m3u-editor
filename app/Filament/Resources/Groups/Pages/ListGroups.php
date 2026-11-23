@@ -142,6 +142,7 @@ class ListGroups extends ListRecords
                     foreach ($groups as $index => $group) {
                         if ($taken->has($start + $index * $step)) {
                             Notification::make()->danger()->title(__('Number range overlaps another source. Choose a different starting number.'))->send();
+
                             return;
                         }
                     }
