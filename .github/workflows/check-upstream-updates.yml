@@ -1,0 +1,37 @@
+name: Check original M3U Editor for updates
+
+on:
+  schedule:
+    - cron: '17 9 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-upstream:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check customized version
+        uses: actions/checkout@v4
+        with:
+          ref: feature/prefix-and-merge-safety
+          fetch-depth: 0
+      - name: Compare original project
+        shell: bash
+        run: |
+          set -euo pipefail
+          git remote add upstream https://github.com/m3ue/m3u-editor.git
+          git fetch upstream master
+          echo "Original upstream commit: $(git rev-parse upstream/master)"
+          echo "Current custom commit: $(git rev-parse HEAD)"
+          if git merge-base --is-ancestor upstream/master HEAD; then
+            echo "Custom branch already contains the latest upstream master."
+          else
+            echo "::warning::Original M3U Editor has commits not present in the customized branch. Review and test before merging."
+            echo "UPSTREAM_UPDATE_AVAILABLE=true" >> "$GITHUB_ENV"
+          fi
+      - name: Record update availability
+        if: env.UPSTREAM_UPDATE_AVAILABLE == 'true'
+        run: |
+          echo "Upstream updates require a separate tested integration. No automatic merge, publish, or deployment is performed."
