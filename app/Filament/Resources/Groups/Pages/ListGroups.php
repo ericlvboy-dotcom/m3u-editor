@@ -6,6 +6,10 @@ use App\Filament\Resources\Groups\GroupResource;
 use App\Jobs\GroupFindAndReplace;
 use App\Jobs\GroupFindAndReplaceReset;
 use App\Models\Playlist;
+use App\Models\Group;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
+use Illuminate\Support\Facades\DB;
 use App\Services\FindReplaceService;
 use App\Services\MergedGroupService;
 use Filament\Actions\Action;
@@ -47,6 +51,68 @@ class ListGroups extends ListRecords
                 ->successRedirectUrl(fn (Model $record): string => GroupResource::getUrl('edit', ['record' => $record]))
                 ->slideOver(),
             MergedGroupService::createMergedGroupAction('live'),
+            Action::make('bulk-renumber-live-groups')
+                ->label(__('Bulk Renumber'))
+                ->icon('heroicon-o-numbered-list')
+                ->schema([
+                    Select::make('playlist_id')
+                        ->label(__('Source playlist'))
+                        ->options(fn () => Playlist::query()->where('user_id', auth()->id())->orderBy('name')->pluck('name', 'id'))
+                        ->required()->searchable(),
+                    TextInput::make('start')->label(__('Starting Sort Order #'))
+                        ->numeric()->integer()->minValue(0)->required()->default(100),
+                    TextInput::make('step')->label(__('Increment By'))
+                        ->numeric()->integer()->minValue(1)->required()->default(1),
+                ])
+                ->modalDescription(__('Assign Sort Order numbers to this source\'s Live TV groups alphabetically by displayed name. This is a one-time action; it does not run during sync. Disable Group Auto Sort on the source first.'))
+                ->requiresConfirmation()
+                ->modalSubmitActionLabel(__('Renumber groups'))
+                ->action(function (array $data): void {
+                    $playlist = Playlist::query()->where('user_id', auth()->id())->findOrFail($data['playlist_id']);
+                    if ($playlist->auto_sort_groups) {
+                        Notification::make()->danger()->title(__('Disable Group Auto Sort for this source before renumbering.'))->send();
+                        return;
+                    }
+                    $start = (int) $data['start'];
+                    $step = (int) $data['step'];
+                    if ($start < 0 || $step < 1) {
+                        Notification::make()->danger()->title(__('Invalid numbering values.'))->send();
+                        return;
+                    }
+                    $groups = Group::query()->where('user_id', auth()->id())
+                        ->where('playlist_id', $playlist->id)->where('type', 'live')
+                        ->whereNull('parent_id')->get()
+                        ->sort(fn ($a, $b) => strnatcasecmp($a->name ?: $a->name_internal ?: '', $b->name ?: $b->name_internal ?: ''))
+                        ->values();
+                    if ($groups->isEmpty()) {
+                        Notification::make()->warning()->title(__('No Live TV groups found for this source.'))->send();
+                        return;
+                    }
+                    $last = $start + ($groups->count() - 1) * $step;
+                    if ($last > 2147483647) {
+                        Notification::make()->danger()->title(__('Sort Order range is too large.'))->send();
+                        return;
+                    }
+                    // Avoid assigning numbers already used by another source.
+                    $taken = Group::query()->where('user_id', auth()->id())->where('type', 'live')
+                        ->where('playlist_id', '!=', $playlist->id)
+                        ->whereBetween('sort_order', [$start, $last])
+                        ->pluck('sort_order')->map(fn ($n) => (int) $n)->flip();
+                    foreach ($groups as $index => $group) {
+                        if ($taken->has($start + $index * $step)) {
+                            Notification::make()->danger()->title(__('Number range overlaps another source. Choose a different starting number.'))->send();
+                            return;
+                        }
+                    }
+                    DB::transaction(function () use ($groups, $start, $step): void {
+                        foreach ($groups as $index => $group) {
+                            $group->update(['sort_order' => $start + $index * $step]);
+                        }
+                    });
+                    Notification::make()->success()->title(__('Live TV groups renumbered A–Z'))
+                        ->body(__(':count groups updated.', ['count' => $groups->count()]))->send();
+                }),
+
             ActionGroup::make([
                 Action::make('find-replace')
                     ->label(__('Find & Replace'))
