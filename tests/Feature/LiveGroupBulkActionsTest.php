@@ -78,3 +78,24 @@ it('replaces and removes exact live prefixes without changing other sources or V
 
     expect($live->fresh()->name)->toBe('Sports');
 });
+
+it('formats only selected source live group names and restores imported names', function () {
+    $live = Group::factory()->for($this->playlist)->for($this->user)->create(['name' => 'Sports News', 'name_internal' => 'Sports News', 'type' => 'live']);
+    $vod = Group::factory()->for($this->playlist)->for($this->user)->create(['name' => 'Movie Night', 'type' => 'vod']);
+    $other = Playlist::factory()->for($this->user)->create();
+    $outside = Group::factory()->for($other)->for($this->user)->create(['name' => 'Other News', 'type' => 'live']);
+
+    Livewire::test(ListGroups::class)
+        ->callAction('format-live-group-names', ['playlist_id' => $this->playlist->id, 'format' => 'upper'])
+        ->assertHasNoErrors();
+
+    expect($live->fresh()->name)->toBe('SPORTS NEWS')
+        ->and($vod->fresh()->name)->toBe('Movie Night')
+        ->and($outside->fresh()->name)->toBe('Other News');
+
+    Livewire::test(ListGroups::class)
+        ->callAction('format-live-group-names', ['playlist_id' => $this->playlist->id, 'format' => 'original'])
+        ->assertHasNoErrors();
+
+    expect($live->fresh()->name)->toBe('Sports News');
+});
