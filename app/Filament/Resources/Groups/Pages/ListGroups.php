@@ -5,18 +5,22 @@ namespace App\Filament\Resources\Groups\Pages;
 use App\Filament\Resources\Groups\GroupResource;
 use App\Jobs\GroupFindAndReplace;
 use App\Jobs\GroupFindAndReplaceReset;
+use App\Models\Group;
 use App\Models\Playlist;
 use App\Services\FindReplaceService;
 use App\Services\MergedGroupService;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\CreateAction;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ListRecords;
 use Filament\Schemas\Components\Tabs\Tab;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 class ListGroups extends ListRecords
 {
@@ -47,6 +51,242 @@ class ListGroups extends ListRecords
                 ->successRedirectUrl(fn (Model $record): string => GroupResource::getUrl('edit', ['record' => $record]))
                 ->slideOver(),
             MergedGroupService::createMergedGroupAction('live'),
+            Action::make('prefix-live-groups')
+                ->label(__('Set Live Group Prefix'))
+                ->icon('heroicon-o-tag')
+                ->schema([
+                    Select::make('playlist_id')
+                        ->label(__('Source playlist'))
+                        ->options(fn () => Playlist::query()->where('user_id', auth()->id())->orderBy('name')->pluck('name', 'id'))
+                        ->required()->searchable(),
+                    TextInput::make('prefix')->label(__('Prefix'))
+                        ->required()->maxLength(60)->helperText(__('Example: 247 produces 247 - Action & Crime')),
+                ])
+                ->requiresConfirmation()
+                ->modalDescription(__('Apply a prefix to Live TV group names for one source. Existing matching prefixes will not be duplicated. Movies and series are not modified.'))
+                ->action(function (array $data): void {
+                    $playlist = Playlist::query()->where('user_id', auth()->id())->findOrFail($data['playlist_id']);
+                    $prefix = trim($data['prefix']);
+                    if ($prefix === '') {
+                        Notification::make()->danger()->title(__('Prefix cannot be empty.'))->send();
+
+                        return;
+                    }
+                    $prefixText = $prefix.' - ';
+                    $updated = 0;
+                    Group::query()->where('user_id', auth()->id())->where('playlist_id', $playlist->id)
+                        ->where('type', 'live')->chunkById(250, function ($groups) use ($prefixText, &$updated): void {
+                            foreach ($groups as $group) {
+                                $original = $group->name ?: $group->name_internal;
+                                if (! $original || str_starts_with($original, $prefixText)) {
+                                    continue;
+                                }
+                                $group->update(['name' => $prefixText.$original]);
+                                $updated++;
+                            }
+                        });
+                    Notification::make()->success()->title(__('Live TV group prefix applied'))
+                        ->body(__(':count groups updated.', ['count' => $updated]))->send();
+                }),
+            Action::make('replace-live-group-prefix')
+                ->label(__('Replace / Remove Live Group Prefix'))
+                ->icon('heroicon-o-pencil-square')
+                ->schema([
+                    Select::make('playlist_id')
+                        ->label(__('Source playlist'))
+                        ->options(fn () => Playlist::query()->where('user_id', auth()->id())->orderBy('name')->pluck('name', 'id'))
+                        ->required()->searchable(),
+                    TextInput::make('old_prefix')
+                        ->label(__('Existing prefix (including separator)'))
+                        ->required()->maxLength(80)
+                        ->helperText(__('Example: EN - (include the separator and any trailing space)')),
+                    TextInput::make('new_prefix')
+                        ->label(__('Replacement prefix (leave blank to remove)'))
+                        ->maxLength(80)
+                        ->helperText(__('Example: EN followed by a space; blank removes the existing prefix')),
+                ])
+                ->requiresConfirmation()
+                ->modalDescription(__('Only Live TV groups in the selected source beginning with the exact existing prefix are changed. Other names and sources are left untouched.'))
+                ->action(function (array $data): void {
+                    $playlist = Playlist::query()->where('user_id', auth()->id())->findOrFail($data['playlist_id']);
+                    $old = (string) $data['old_prefix'];
+                    $new = (string) ($data['new_prefix'] ?? '');
+                    if (trim($old) === '' || $old === $new) {
+                        Notification::make()->warning()->title(__('Enter an existing prefix different from the replacement.'))->send();
+
+                        return;
+                    }
+                    $updated = 0;
+                    Group::query()->where('user_id', auth()->id())->where('playlist_id', $playlist->id)
+                        ->where('type', 'live')->chunkById(250, function ($groups) use ($old, $new, &$updated): void {
+                            foreach ($groups as $group) {
+                                $name = $group->name ?: $group->name_internal;
+                                if (! $name || ! str_starts_with($name, $old)) {
+                                    continue;
+                                }
+                                $group->update(['name' => $new.substr($name, strlen($old))]);
+                                $updated++;
+                            }
+                        });
+                    Notification::make()->success()->title(__('Live TV group prefixes updated'))
+                        ->body(__(':count groups updated.', ['count' => $updated]))->send();
+                }),
+            Action::make('merge-identical-live-groups')
+                ->label(__('Merge Identically Named Live Groups'))
+                ->icon('heroicon-o-rectangle-group')
+                ->schema([
+                    Select::make('playlist_id')->label(__('Merged playlist'))
+                        ->options(fn () => Playlist::query()->where('user_id', auth()->id())->orderBy('name')->pluck('name', 'id'))
+                        ->required()->searchable(),
+                ])
+                ->requiresConfirmation()
+                ->modalDescription(__('Within the selected playlist only, groups with the same displayed name are combined into a merged container. Every channel is retained; original groups and stream URLs are preserved.'))
+                ->action(function (array $data): void {
+                    $playlist = Playlist::query()->where('user_id', auth()->id())->findOrFail($data['playlist_id']);
+                    $sets = Group::query()->where('user_id', auth()->id())->where('playlist_id', $playlist->id)
+                        ->where('type', 'live')->whereNull('parent_id')->get()
+                        ->groupBy(fn (Group $group) => mb_strtolower(trim($group->name ?: $group->name_internal ?: '')))
+                        ->filter(fn ($groups, $name) => $name !== '' && $groups->count() > 1);
+                    $mergedCount = 0;
+                    DB::transaction(function () use ($sets, $playlist, &$mergedCount): void {
+                        foreach ($sets as $groups) {
+                            $existing = $groups->first(fn (Group $group) => $group->is_merged);
+                            $children = $groups->filter(fn (Group $group) => ! $group->is_merged);
+                            if ($children->isEmpty()) {
+                                continue;
+                            }
+                            $merged = $existing ?? Group::query()->create([
+                                'user_id' => auth()->id(),
+                                'playlist_id' => $playlist->id,
+                                'type' => 'live',
+                                'custom' => true,
+                                'is_merged' => true,
+                                'name' => $groups->first()->name ?: $groups->first()->name_internal,
+                                'name_internal' => $groups->first()->name ?: $groups->first()->name_internal,
+                                'sort_order' => $groups->min('sort_order') ?? 9999,
+                            ]);
+                            MergedGroupService::syncGroupChildren($merged, $children->pluck('id')->all(), false);
+                            $mergedCount++;
+                        }
+                    });
+                    Notification::make()->success()->title(__('Matching Live TV groups combined'))
+                        ->body(__(':count merged groups updated.', ['count' => $mergedCount]))->send();
+                }),
+            Action::make('format-live-group-names')
+                ->label(__('Format Live Group Names'))
+                ->icon('heroicon-o-bars-3-bottom-left')
+                ->schema([
+                    Select::make('playlist_id')
+                        ->label(__('Source playlist'))
+                        ->options(fn () => Playlist::query()->where('user_id', auth()->id())->orderBy('name')->pluck('name', 'id'))
+                        ->required()->searchable(),
+                    Select::make('format')
+                        ->label(__('Name format'))
+                        ->options([
+                            'original' => __('Restore imported names'),
+                            'upper' => __('UPPERCASE'),
+                            'lower' => __('lowercase'),
+                            'title' => __('Title Case'),
+                            'sentence' => __('Sentence case'),
+                        ])
+                        ->required(),
+                ])
+                ->requiresConfirmation()
+                ->modalDescription(__('Format only Live TV group names in the selected source. Restore uses the original imported group names. Movies and series are unchanged.'))
+                ->action(function (array $data): void {
+                    $playlist = Playlist::query()->where('user_id', auth()->id())->findOrFail($data['playlist_id']);
+                    $format = $data['format'];
+                    $updated = 0;
+                    Group::query()->where('user_id', auth()->id())->where('playlist_id', $playlist->id)
+                        ->where('type', 'live')->chunkById(250, function ($groups) use ($format, &$updated): void {
+                            foreach ($groups as $group) {
+                                $original = $group->name_internal;
+                                $current = $group->name ?: $original;
+                                if (! $current) {
+                                    continue;
+                                }
+                                $name = match ($format) {
+                                    'original' => $original ?: $current,
+                                    'upper' => mb_strtoupper($current),
+                                    'lower' => mb_strtolower($current),
+                                    'title' => mb_convert_case($current, MB_CASE_TITLE),
+                                    'sentence' => mb_strtoupper(mb_substr(mb_strtolower($current), 0, 1)).mb_substr(mb_strtolower($current), 1),
+                                };
+                                if ($name !== $current) {
+                                    $group->update(['name' => $name]);
+                                    $updated++;
+                                }
+                            }
+                        });
+                    Notification::make()->success()->title(__('Live TV group names formatted'))
+                        ->body(__(':count groups updated.', ['count' => $updated]))->send();
+                }),
+            Action::make('bulk-renumber-live-groups')
+                ->label(__('Bulk Renumber'))
+                ->icon('heroicon-o-numbered-list')
+                ->schema([
+                    Select::make('playlist_id')
+                        ->label(__('Source playlist'))
+                        ->options(fn () => Playlist::query()->where('user_id', auth()->id())->orderBy('name')->pluck('name', 'id'))
+                        ->required()->searchable(),
+                    TextInput::make('start')->label(__('Starting Sort Order #'))
+                        ->numeric()->integer()->minValue(0)->required()->default(100),
+                    TextInput::make('step')->label(__('Increment By'))
+                        ->numeric()->integer()->minValue(1)->required()->default(1),
+                ])
+                ->modalDescription(__('Assign Sort Order numbers to this source\'s Live TV groups alphabetically by displayed name. This is a one-time action; it does not run during sync. Disable Group Auto Sort on the source first.'))
+                ->requiresConfirmation()
+                ->modalSubmitActionLabel(__('Renumber groups'))
+                ->action(function (array $data): void {
+                    $playlist = Playlist::query()->where('user_id', auth()->id())->findOrFail($data['playlist_id']);
+                    if ($playlist->auto_sort_groups) {
+                        Notification::make()->danger()->title(__('Disable Group Auto Sort for this source before renumbering.'))->send();
+
+                        return;
+                    }
+                    $start = (int) $data['start'];
+                    $step = (int) $data['step'];
+                    if ($start < 0 || $step < 1) {
+                        Notification::make()->danger()->title(__('Invalid numbering values.'))->send();
+
+                        return;
+                    }
+                    $groups = Group::query()->where('user_id', auth()->id())
+                        ->where('playlist_id', $playlist->id)->where('type', 'live')
+                        ->whereNull('parent_id')->get()
+                        ->sort(fn ($a, $b) => strnatcasecmp($a->name ?: $a->name_internal ?: '', $b->name ?: $b->name_internal ?: ''))
+                        ->values();
+                    if ($groups->isEmpty()) {
+                        Notification::make()->warning()->title(__('No Live TV groups found for this source.'))->send();
+
+                        return;
+                    }
+                    $last = $start + ($groups->count() - 1) * $step;
+                    if ($last > 2147483647) {
+                        Notification::make()->danger()->title(__('Sort Order range is too large.'))->send();
+
+                        return;
+                    }
+                    // Avoid assigning numbers already used by another source.
+                    $taken = Group::query()->where('user_id', auth()->id())->where('type', 'live')
+                        ->where('playlist_id', '!=', $playlist->id)
+                        ->whereBetween('sort_order', [$start, $last])
+                        ->pluck('sort_order')->map(fn ($n) => (int) $n)->flip();
+                    foreach ($groups as $index => $group) {
+                        if ($taken->has($start + $index * $step)) {
+                            Notification::make()->danger()->title(__('Number range overlaps another source. Choose a different starting number.'))->send();
+
+                            return;
+                        }
+                    }
+                    DB::transaction(function () use ($groups, $start, $step): void {
+                        foreach ($groups as $index => $group) {
+                            $group->update(['sort_order' => $start + $index * $step]);
+                        }
+                    });
+                    Notification::make()->success()->title(__('Live TV groups renumbered A–Z'))
+                        ->body(__(':count groups updated.', ['count' => $groups->count()]))->send();
+                }),
             ActionGroup::make([
                 Action::make('find-replace')
                     ->label(__('Find & Replace'))

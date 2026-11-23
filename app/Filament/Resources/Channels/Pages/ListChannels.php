@@ -65,6 +65,51 @@ class ListChannels extends ListRecords
                     model: $model,
                 ))
                 ->slideOver(),
+            Action::make('format-live-channel-names')
+                ->label(__('Format Live Channel Names'))
+                ->icon('heroicon-o-pencil-square')
+                ->schema([
+                    Select::make('playlist_id')->label(__('Source playlist'))
+                        ->options(fn () => Playlist::query()->where('user_id', auth()->id())->orderBy('name')->pluck('name', 'id'))
+                        ->required()->searchable(),
+                    Select::make('format')->label(__('Name format'))->options([
+                        'original' => __('Restore provider names'),
+                        'upper' => __('UPPERCASE'),
+                        'lower' => __('lowercase'),
+                        'title' => __('Title Case'),
+                        'sentence' => __('Sentence case'),
+                    ])->required(),
+                ])
+                ->requiresConfirmation()
+                ->modalDescription(__('Only Live TV channel display names in the selected source change. Stream URLs, EPG mappings, movies, and series remain unchanged.'))
+                ->action(function (array $data): void {
+                    $playlist = Playlist::query()->where('user_id', auth()->id())->findOrFail($data['playlist_id']);
+                    $format = $data['format'];
+                    $updated = 0;
+                    Channel::query()->where('user_id', auth()->id())->where('playlist_id', $playlist->id)
+                        ->where('is_vod', false)->chunkById(250, function ($channels) use ($format, &$updated): void {
+                            foreach ($channels as $channel) {
+                                $original = $channel->name;
+                                $current = $channel->name_custom ?: $original;
+                                if (! $current) {
+                                    continue;
+                                }
+                                $name = match ($format) {
+                                    'original' => $original,
+                                    'upper' => mb_strtoupper($current),
+                                    'lower' => mb_strtolower($current),
+                                    'title' => mb_convert_case($current, MB_CASE_TITLE),
+                                    'sentence' => mb_strtoupper(mb_substr(mb_strtolower($current), 0, 1)).mb_substr(mb_strtolower($current), 1),
+                                };
+                                if ($name !== $current || ($format === 'original' && $channel->name_custom !== null)) {
+                                    $channel->update(['name_custom' => $format === 'original' ? null : $name]);
+                                    $updated++;
+                                }
+                            }
+                        });
+                    Notification::make()->success()->title(__('Live channel names formatted'))
+                        ->body(__(':count channels updated.', ['count' => $updated]))->send();
+                }),
             ActionGroup::make([
                 PlaylistService::getMergeAction()
                     ->after(function () {
