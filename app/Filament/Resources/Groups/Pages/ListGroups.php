@@ -51,6 +51,42 @@ class ListGroups extends ListRecords
                 ->successRedirectUrl(fn (Model $record): string => GroupResource::getUrl('edit', ['record' => $record]))
                 ->slideOver(),
             MergedGroupService::createMergedGroupAction('live'),
+            Action::make('prefix-live-groups')
+                ->label(__('Set Live Group Prefix'))
+                ->icon('heroicon-o-tag')
+                ->schema([
+                    Select::make('playlist_id')
+                        ->label(__('Source playlist'))
+                        ->options(fn () => Playlist::query()->where('user_id', auth()->id())->orderBy('name')->pluck('name', 'id'))
+                        ->required()->searchable(),
+                    TextInput::make('prefix')->label(__('Prefix'))
+                        ->required()->maxLength(60)->helperText(__('Example: 247 produces 247 - Action & Crime')),
+                ])
+                ->requiresConfirmation()
+                ->modalDescription(__('Apply a prefix to Live TV group names for one source. Existing matching prefixes will not be duplicated. Movies and series are not modified.'))
+                ->action(function (array $data): void {
+                    $playlist = Playlist::query()->where('user_id', auth()->id())->findOrFail($data['playlist_id']);
+                    $prefix = trim($data['prefix']);
+                    if ($prefix === '') {
+                        Notification::make()->danger()->title(__('Prefix cannot be empty.'))->send();
+                        return;
+                    }
+                    $prefixText = $prefix.' - ';
+                    $updated = 0;
+                    Group::query()->where('user_id', auth()->id())->where('playlist_id', $playlist->id)
+                        ->where('type', 'live')->chunkById(250, function ($groups) use ($prefixText, &$updated): void {
+                            foreach ($groups as $group) {
+                                $original = $group->name ?: $group->name_internal;
+                                if (! $original || str_starts_with($original, $prefixText)) {
+                                    continue;
+                                }
+                                $group->update(['name' => $prefixText.$original]);
+                                $updated++;
+                            }
+                        });
+                    Notification::make()->success()->title(__('Live TV group prefix applied'))
+                        ->body(__(':count groups updated.', ['count' => $updated]))->send();
+                }),
             Action::make('bulk-renumber-live-groups')
                 ->label(__('Bulk Renumber'))
                 ->icon('heroicon-o-numbered-list')
