@@ -55,3 +55,26 @@ it('prefixes only live groups without duplicating an existing matching prefix', 
         ->and($already->fresh()->name)->toBe('247 - Sports')
         ->and($vod->fresh()->name)->toBe('Movies');
 });
+
+it('replaces and removes exact live prefixes without changing other sources or VOD', function () {
+    $live = Group::factory()->for($this->playlist)->for($this->user)->create(['name' => 'EN - Sports', 'type' => 'live']);
+    $unmatched = Group::factory()->for($this->playlist)->for($this->user)->create(['name' => 'News', 'type' => 'live']);
+    $vod = Group::factory()->for($this->playlist)->for($this->user)->create(['name' => 'EN - Movies', 'type' => 'vod']);
+    $other = Playlist::factory()->for($this->user)->create();
+    $outside = Group::factory()->for($other)->for($this->user)->create(['name' => 'EN - Sports', 'type' => 'live']);
+
+    Livewire::test(ListGroups::class)
+        ->callAction('replace-live-group-prefix', ['playlist_id' => $this->playlist->id, 'old_prefix' => 'EN - ', 'new_prefix' => 'EN '])
+        ->assertHasNoErrors();
+
+    expect($live->fresh()->name)->toBe('EN Sports')
+        ->and($unmatched->fresh()->name)->toBe('News')
+        ->and($vod->fresh()->name)->toBe('EN - Movies')
+        ->and($outside->fresh()->name)->toBe('EN - Sports');
+
+    Livewire::test(ListGroups::class)
+        ->callAction('replace-live-group-prefix', ['playlist_id' => $this->playlist->id, 'old_prefix' => 'EN ', 'new_prefix' => ''])
+        ->assertHasNoErrors();
+
+    expect($live->fresh()->name)->toBe('Sports');
+});
