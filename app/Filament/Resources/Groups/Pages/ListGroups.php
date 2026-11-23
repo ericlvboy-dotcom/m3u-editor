@@ -88,6 +88,49 @@ class ListGroups extends ListRecords
                     Notification::make()->success()->title(__('Live TV group prefix applied'))
                         ->body(__(':count groups updated.', ['count' => $updated]))->send();
                 }),
+            Action::make('replace-live-group-prefix')
+                ->label(__('Replace / Remove Live Group Prefix'))
+                ->icon('heroicon-o-pencil-square')
+                ->schema([
+                    Select::make('playlist_id')
+                        ->label(__('Source playlist'))
+                        ->options(fn () => Playlist::query()->where('user_id', auth()->id())->orderBy('name')->pluck('name', 'id'))
+                        ->required()->searchable(),
+                    TextInput::make('old_prefix')
+                        ->label(__('Existing prefix (including separator)'))
+                        ->required()->maxLength(80)
+                        ->helperText(__('Example: EN - (include the separator and any trailing space)')),
+                    TextInput::make('new_prefix')
+                        ->label(__('Replacement prefix (leave blank to remove)'))
+                        ->maxLength(80)
+                        ->helperText(__('Example: EN followed by a space; blank removes the existing prefix')),
+                ])
+                ->requiresConfirmation()
+                ->modalDescription(__('Only Live TV groups in the selected source beginning with the exact existing prefix are changed. Other names and sources are left untouched.'))
+                ->action(function (array $data): void {
+                    $playlist = Playlist::query()->where('user_id', auth()->id())->findOrFail($data['playlist_id']);
+                    $old = (string) $data['old_prefix'];
+                    $new = (string) ($data['new_prefix'] ?? '');
+                    if (trim($old) === '' || $old === $new) {
+                        Notification::make()->warning()->title(__('Enter an existing prefix different from the replacement.'))->send();
+
+                        return;
+                    }
+                    $updated = 0;
+                    Group::query()->where('user_id', auth()->id())->where('playlist_id', $playlist->id)
+                        ->where('type', 'live')->chunkById(250, function ($groups) use ($old, $new, &$updated): void {
+                            foreach ($groups as $group) {
+                                $name = $group->name ?: $group->name_internal;
+                                if (! $name || ! str_starts_with($name, $old)) {
+                                    continue;
+                                }
+                                $group->update(['name' => $new.substr($name, strlen($old))]);
+                                $updated++;
+                            }
+                        });
+                    Notification::make()->success()->title(__('Live TV group prefixes updated'))
+                        ->body(__(':count groups updated.', ['count' => $updated]))->send();
+                }),
             Action::make('bulk-renumber-live-groups')
                 ->label(__('Bulk Renumber'))
                 ->icon('heroicon-o-numbered-list')
