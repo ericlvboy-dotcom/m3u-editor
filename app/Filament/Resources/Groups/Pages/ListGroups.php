@@ -131,6 +131,55 @@ class ListGroups extends ListRecords
                     Notification::make()->success()->title(__('Live TV group prefixes updated'))
                         ->body(__(':count groups updated.', ['count' => $updated]))->send();
                 }),
+            Action::make('format-live-group-names')
+                ->label(__('Format Live Group Names'))
+                ->icon('heroicon-o-bars-3-bottom-left')
+                ->schema([
+                    Select::make('playlist_id')
+                        ->label(__('Source playlist'))
+                        ->options(fn () => Playlist::query()->where('user_id', auth()->id())->orderBy('name')->pluck('name', 'id'))
+                        ->required()->searchable(),
+                    Select::make('format')
+                        ->label(__('Name format'))
+                        ->options([
+                            'original' => __('Restore imported names'),
+                            'upper' => __('UPPERCASE'),
+                            'lower' => __('lowercase'),
+                            'title' => __('Title Case'),
+                            'sentence' => __('Sentence case'),
+                        ])
+                        ->required(),
+                ])
+                ->requiresConfirmation()
+                ->modalDescription(__('Format only Live TV group names in the selected source. Restore uses the original imported group names. Movies and series are unchanged.'))
+                ->action(function (array $data): void {
+                    $playlist = Playlist::query()->where('user_id', auth()->id())->findOrFail($data['playlist_id']);
+                    $format = $data['format'];
+                    $updated = 0;
+                    Group::query()->where('user_id', auth()->id())->where('playlist_id', $playlist->id)
+                        ->where('type', 'live')->chunkById(250, function ($groups) use ($format, &$updated): void {
+                            foreach ($groups as $group) {
+                                $original = $group->name_internal;
+                                $current = $group->name ?: $original;
+                                if (! $current) {
+                                    continue;
+                                }
+                                $name = match ($format) {
+                                    'original' => $original ?: $current,
+                                    'upper' => mb_strtoupper($current),
+                                    'lower' => mb_strtolower($current),
+                                    'title' => mb_convert_case($current, MB_CASE_TITLE),
+                                    'sentence' => mb_strtoupper(mb_substr(mb_strtolower($current), 0, 1)).mb_substr(mb_strtolower($current), 1),
+                                };
+                                if ($name !== $current) {
+                                    $group->update(['name' => $name]);
+                                    $updated++;
+                                }
+                            }
+                        });
+                    Notification::make()->success()->title(__('Live TV group names formatted'))
+                        ->body(__(':count groups updated.', ['count' => $updated]))->send();
+                }),
             Action::make('bulk-renumber-live-groups')
                 ->label(__('Bulk Renumber'))
                 ->icon('heroicon-o-numbered-list')
