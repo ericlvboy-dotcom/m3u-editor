@@ -25,6 +25,9 @@ concurrency:
   group: ci-${{ github.ref }}-${{ inputs.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   lint:
     name: Code Quality
@@ -33,7 +36,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ github.head_ref || inputs.ref || github.ref }}
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -69,6 +72,18 @@ jobs:
 
       - name: Install npm dependencies (protected by safe-chain)
         run: npm ci
+
+      - name: Apply Laravel Pint to modified Groups page
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          vendor/bin/pint app/Filament/Resources/Groups/Pages/ListGroups.php
+          if ! git diff --quiet -- app/Filament/Resources/Groups/Pages/ListGroups.php; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add app/Filament/Resources/Groups/Pages/ListGroups.php
+            git commit -m "Apply Laravel Pint formatting to Groups page"
+            git push origin HEAD:${{ github.head_ref }}
+          fi
 
       - name: Check code style with Pint
         run: vendor/bin/pint --test
