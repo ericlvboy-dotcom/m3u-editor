@@ -1,0 +1,32 @@
+name: Publish test Docker image
+on:
+  push:
+    branches: [publish-test-df4eadb]
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Sign in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish test image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/ericlvboy-dotcom/m3u-editor:test-df4eadb
+          build-args: |
+            GIT_BRANCH=publish-test-df4eadb
+            GIT_COMMIT=df4eadb
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
