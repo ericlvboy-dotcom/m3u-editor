@@ -69,6 +69,7 @@ class ListGroups extends ListRecords
                     $prefix = trim($data['prefix']);
                     if ($prefix === '') {
                         Notification::make()->danger()->title(__('Prefix cannot be empty.'))->send();
+
                         return;
                     }
                     $prefixText = $prefix.' - ';
@@ -77,7 +78,7 @@ class ListGroups extends ListRecords
                         ->where('type', 'live')->chunkById(250, function ($groups) use ($prefixText, &$updated): void {
                             foreach ($groups as $group) {
                                 $original = $group->name ?: $group->name_internal;
-                                if (! $original || str_starts_with($original, $prefixText)) {
+                                if (!$original || str_starts_with($original, $prefixText)) {
                                     continue;
                                 }
                                 $group->update(['name' => $prefixText.$original]);
@@ -107,12 +108,14 @@ class ListGroups extends ListRecords
                     $playlist = Playlist::query()->where('user_id', auth()->id())->findOrFail($data['playlist_id']);
                     if ($playlist->auto_sort_groups) {
                         Notification::make()->danger()->title(__('Disable Group Auto Sort for this source before renumbering.'))->send();
+
                         return;
                     }
                     $start = (int) $data['start'];
                     $step = (int) $data['step'];
                     if ($start < 0 || $step < 1) {
                         Notification::make()->danger()->title(__('Invalid numbering values.'))->send();
+
                         return;
                     }
                     $groups = Group::query()->where('user_id', auth()->id())
@@ -122,11 +125,13 @@ class ListGroups extends ListRecords
                         ->values();
                     if ($groups->isEmpty()) {
                         Notification::make()->warning()->title(__('No Live TV groups found for this source.'))->send();
+
                         return;
                     }
                     $last = $start + ($groups->count() - 1) * $step;
                     if ($last > 2147483647) {
                         Notification::make()->danger()->title(__('Sort Order range is too large.'))->send();
+
                         return;
                     }
                     // Avoid assigning numbers already used by another source.
@@ -148,7 +153,6 @@ class ListGroups extends ListRecords
                     Notification::make()->success()->title(__('Live TV groups renumbered A–Z'))
                         ->body(__(':count groups updated.', ['count' => $groups->count()]))->send();
                 }),
-
             ActionGroup::make([
                 Action::make('find-replace')
                     ->label(__('Find & Replace'))
