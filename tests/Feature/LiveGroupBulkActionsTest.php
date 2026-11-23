@@ -25,10 +25,10 @@ it('renumbers only selected source live groups alphabetically', function () {
         ->callAction('bulk-renumber-live-groups', ['playlist_id' => $this->playlist->id, 'start' => 100, 'step' => 5])
         ->assertHasNoErrors();
 
-    expect($a->fresh()->sort_order)->toBe(100)
-        ->and($z->fresh()->sort_order)->toBe(105)
-        ->and($vod->fresh()->sort_order)->toBe(8)
-        ->and($untouched->fresh()->sort_order)->toBe(9);
+    expect($a->fresh()->sort_order)->toEqual(100)
+        ->and($z->fresh()->sort_order)->toEqual(105)
+        ->and($vod->fresh()->sort_order)->toEqual(8)
+        ->and($untouched->fresh()->sort_order)->toEqual(9);
 });
 
 it('does not renumber when provider auto sort is enabled', function () {
@@ -39,7 +39,7 @@ it('does not renumber when provider auto sort is enabled', function () {
         ->callAction('bulk-renumber-live-groups', ['playlist_id' => $this->playlist->id, 'start' => 100, 'step' => 1])
         ->assertHasNoErrors();
 
-    expect($group->fresh()->sort_order)->toBe(7);
+    expect($group->fresh()->sort_order)->toEqual(7);
 });
 
 it('prefixes only live groups without duplicating an existing matching prefix', function () {
