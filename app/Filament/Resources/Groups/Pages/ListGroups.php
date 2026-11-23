@@ -78,7 +78,7 @@ class ListGroups extends ListRecords
                         ->where('type', 'live')->chunkById(250, function ($groups) use ($prefixText, &$updated): void {
                             foreach ($groups as $group) {
                                 $original = $group->name ?: $group->name_internal;
-                                if (!$original || str_starts_with($original, $prefixText)) {
+                                if (! $original || str_starts_with($original, $prefixText)) {
                                     continue;
                                 }
                                 $group->update(['name' => $prefixText.$original]);
