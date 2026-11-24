@@ -37,6 +37,7 @@ class PlaylistSortPrecedenceTest extends TestCase
 
         $this->assertSame($active, PlaylistSortPrecedence::latest($active, $other));
     }
+
     public function test_first_explicit_sort_becomes_active(): void
     {
         $first = ['scope' => 'groups_channels', 'order' => 'manual', 'revision' => 1];
