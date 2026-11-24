@@ -17,3 +17,9 @@ it('replaces and removes a group prefix without stacking duplicates', function (
         ->and(PlaylistLabelFormatter::replacePrefix('EN | Sports', 'EN | ', ''))->toBe('Sports')
         ->and(PlaylistLabelFormatter::replacePrefix('FR | Sports', '', 'FR | '))->toBe('FR | Sports');
 });
+
+it('does not remove unrelated prefixes or duplicate a newly applied prefix', function () {
+    expect(PlaylistLabelFormatter::replacePrefix('UK | Sports', 'EN | ', 'FR | '))->toBe('FR | UK | Sports')
+        ->and(PlaylistLabelFormatter::replacePrefix('FR | Sports', 'EN | ', 'FR | '))->toBe('FR | Sports')
+        ->and(PlaylistLabelFormatter::replacePrefix('EN | Sports', 'EN | ', ''))->toBe('Sports');
+});
