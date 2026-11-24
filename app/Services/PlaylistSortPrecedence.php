@@ -9,8 +9,10 @@ namespace App\Services;
 final class PlaylistSortPrecedence
 {
     /**
-     * @param array{scope: string, order: string, revision: int}|null $current
-     * @param array{scope: string, order: string, revision: int}|null $candidate
+     * @param  array{scope: string, order: string, revision: int}|null  $current
+     *
+     * @param  array{scope: string, order: string, revision: int}|null  $candidate
+     *
      * @return array{scope: string, order: string, revision: int}|null
      */
     public static function latest(?array $current, ?array $candidate): ?array
