@@ -10,15 +10,6 @@ namespace App\Support;
  */
 final class PlaylistGroupSorter
 {
-    /**
-     * @template T
-     *
-     * @param array<int, T> $groups
-     *
-     * @param callable(T): string $name
-     *
-     * @return array<int, T>
-     */
     public static function sort(array $groups, string $mode, callable $name): array
     {
         if ($mode === 'provider') {
