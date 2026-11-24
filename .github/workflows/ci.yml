@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main, master, dev, experimental]
   push:
-    branches: [main, master]
+    branches: [main, master, 'feature/clean-playlist-epg-redesign']
   workflow_call:
     inputs:
       ref:
@@ -245,7 +245,7 @@ jobs:
     name: Docker Build Validation
     runs-on: ubuntu-latest
     needs: [test, security]
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/feature/clean-playlist-epg-redesign'
     steps:
       - name: Checkout
         uses: actions/checkout@v6
