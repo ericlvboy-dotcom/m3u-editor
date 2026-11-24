@@ -20,6 +20,6 @@ final class PlaylistSortPrecedence
 
         // Revision must be issued only for an explicitly applied sorting action.
         // Equal revisions preserve the already-active choice deterministically.
-        return $candidate['revision'] > $current['revision'] ? $candidate : $current;
+        return ($candidate['revision'] ?? 0) > ($current['revision'] ?? 0) ? $candidate : $current;
     }
 }
