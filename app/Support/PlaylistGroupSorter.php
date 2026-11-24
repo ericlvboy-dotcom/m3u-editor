@@ -25,7 +25,7 @@ final class PlaylistGroupSorter
             return array_values($groups);
         }
 
-        if (!in_array($mode, ['az', 'za'], true)) {
+        if (! in_array($mode, ['az', 'za'], true)) {
             throw new \InvalidArgumentException("Unknown group sort mode: {$mode}");
         }
 
