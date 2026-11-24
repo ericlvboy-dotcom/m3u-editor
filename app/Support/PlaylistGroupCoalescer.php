@@ -11,13 +11,6 @@ namespace App\Support;
  */
 final class PlaylistGroupCoalescer
 {
-    /**
-     * @template T
-     *
-     * @param iterable<array{name: string, channels: iterable<T>}> $groups
-     *
-     * @return array<int, array{name: string, channels: array<int, T>}>
-     */
     public static function coalesce(iterable $groups): array
     {
         $result = [];
@@ -25,7 +18,7 @@ final class PlaylistGroupCoalescer
 
         foreach ($groups as $group) {
             $name = $group['name'];
-            if (!array_key_exists($name, $positions)) {
+            if (! array_key_exists($name, $positions)) {
                 $positions[$name] = count($result);
                 $result[] = ['name' => $name, 'channels' => []];
             }
