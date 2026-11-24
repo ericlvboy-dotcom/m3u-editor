@@ -37,4 +37,18 @@ class PlaylistSortPrecedenceTest extends TestCase
 
         $this->assertSame($active, PlaylistSortPrecedence::latest($active, $other));
     }
+    public function test_first_explicit_sort_becomes_active(): void
+    {
+        $first = ['scope' => 'groups_channels', 'order' => 'manual', 'revision' => 1];
+
+        $this->assertSame($first, PlaylistSortPrecedence::latest(null, $first));
+    }
+
+    public function test_older_sort_cannot_override_newer_sort(): void
+    {
+        $active = ['scope' => 'merged_playlist', 'order' => 'az', 'revision' => 12];
+        $older = ['scope' => 'groups_channels', 'order' => 'manual', 'revision' => 11];
+
+        $this->assertSame($active, PlaylistSortPrecedence::latest($active, $older));
+    }
 }
