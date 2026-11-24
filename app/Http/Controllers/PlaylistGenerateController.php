@@ -896,7 +896,8 @@ class PlaylistGenerateController extends Controller
                 ->orderByRaw('COALESCE(channel_custom_playlist.sort, channels.sort)')
                 ->orderByRaw('COALESCE(channel_custom_playlist.channel_number, channels.channel)')
                 ->orderByRaw(self::CUSTOM_CHANNEL_MINOR_ORDER)
-                ->orderBy('channels.title');
+                ->orderBy('channels.title')
+                ->orderBy('channels.id');
         } else {
             // Per-alias custom live group ordering (optional). When enabled, the
             // selected live groups are ranked by the alias's saved order; any group
@@ -924,7 +925,8 @@ class PlaylistGenerateController extends Controller
                 ->orderBy('channels.sort')
                 ->orderBy('channels.channel')
                 ->orderByRaw('COALESCE(channels.channel_minor, 0)')
-                ->orderBy('channels.title');
+                ->orderBy('channels.title')
+                ->orderBy('channels.id');
         }
 
         return $query;
