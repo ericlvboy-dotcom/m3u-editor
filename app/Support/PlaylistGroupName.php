@@ -13,11 +13,17 @@ use InvalidArgumentException;
 final class PlaylistGroupName
 {
     public const ORIGINAL = 'original';
+
     public const TITLE = 'title';
+
     public const UPPER = 'upper';
+
     public const TITLE_DASH = 'title_dash';
+
     public const UPPER_DASH = 'upper_dash';
+
     public const TITLE_PIPE = 'title_pipe';
+
     public const UPPER_PIPE = 'upper_pipe';
 
     public static function format(string $providerName, string $prefix = '', string $style = self::ORIGINAL): string
