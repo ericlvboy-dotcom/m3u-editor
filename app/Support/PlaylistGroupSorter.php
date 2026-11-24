@@ -12,8 +12,11 @@ final class PlaylistGroupSorter
 {
     /**
      * @template T
+     *
      * @param array<int, T> $groups
+     *
      * @param callable(T): string $name
+     *
      * @return array<int, T>
      */
     public static function sort(array $groups, string $mode, callable $name): array
@@ -22,7 +25,7 @@ final class PlaylistGroupSorter
             return array_values($groups);
         }
 
-        if (! in_array($mode, ['az', 'za'], true)) {
+        if (!in_array($mode, ['az', 'za'], true)) {
             throw new \InvalidArgumentException("Unknown group sort mode: {$mode}");
         }
 
