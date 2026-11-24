@@ -12,7 +12,9 @@ final class MergedPlaylistGroupProjection
 {
     /**
      * @template T
+     *
      * @param iterable<array{name: string, prefix?: string, channels: iterable<T>}> $sourceGroups
+     *
      * @return array<int, array{name: string, channels: array<int, T>}>
      */
     public static function build(iterable $sourceGroups, string $format = 'original', string $order = 'provider'): array
