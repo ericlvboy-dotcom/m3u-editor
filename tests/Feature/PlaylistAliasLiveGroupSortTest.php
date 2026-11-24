@@ -135,6 +135,25 @@ describe('getChannelQuery custom live group ordering', function () {
             ->and($channels->last()->id)->toBe($newsCh->id);
     });
 
+    it('keeps channel order deterministic when channels share the same sort values', function () {
+        $sports = makeLiveGroup($this->user, $this->playlist, 'Sports', 1);
+        $first = makeLiveChannel($this->user, $this->playlist, $sports, 'Same Title');
+        $second = makeLiveChannel($this->user, $this->playlist, $sports, 'Same Title');
+
+        $first->update(['sort' => 1, 'channel' => 10]);
+        $second->update(['sort' => 1, 'channel' => 10]);
+
+        $alias = makeSortAlias($this->user, $this->playlist, [
+            'selected_groups' => ['Sports'],
+            'sort_live_groups_custom' => true,
+            'live_group_order' => ['Sports'],
+        ]);
+
+        $ids = PlaylistGenerateController::getChannelQuery($alias)->get()->pluck('id')->all();
+
+        expect($ids)->toBe([$first->id, $second->id]);
+    });
+
     it('falls back to group sort_order when custom sort is disabled', function () {
         $news = makeLiveGroup($this->user, $this->playlist, 'News', 1);
         $sports = makeLiveGroup($this->user, $this->playlist, 'Sports', 2);
