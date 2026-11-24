@@ -8,7 +8,7 @@ final class PlaylistLabelFormatter
      * Normalize a group or channel label without changing its original value
      * when no transformation is requested.
      *
-     * @param 'upper'|'lower'|'title'|null $case
+     * @param  'upper'|'lower'|'title'|null  $case
      */
     public static function format(string $label, ?string $case = null): string
     {
