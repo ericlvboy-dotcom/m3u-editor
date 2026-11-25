@@ -1,0 +1,35 @@
+name: Publish verified editor release
+on:
+  push:
+    branches: [maintenance/ghcr-cleanup]
+    paths: [.github/workflows/publish-editor-fork-release.yml]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ericlvboy-dotcom/m3u-editor
+        run: |
+          set -euo pipefail
+          gh release create v0.14.6 --target a2971a6d9066bb2f63ff98744dd3063113a41ee8 --latest --title 'M3U Editor Fork v0.14.6' --notes-file - <<'NOTES'
+          ## Changes in this fork build
+
+          - In-app update checks and Release Logs use this GitHub fork.
+          - Restored the Create Backup action on the admin Backups page.
+          - Installed M3U TV can follow the device orientation.
+          - Updated League CSV to 9.29.1 to resolve a Composer security advisory.
+
+          ## Docker image
+
+          Use `ghcr.io/ericlvboy-dotcom/m3u-editor:latest` for AMD64 or ARM64. This release is pinned to:
+
+          ```text
+          ghcr.io/ericlvboy-dotcom/m3u-editor@sha256:c05a766da0324634434d4eef27ab49a8b5150074d302582c9d912359ada2efe2
+          ```
+
+          [Verified build](https://github.com/ericlvboy-dotcom/m3u-editor/actions/runs/45617053963)
+          NOTES
