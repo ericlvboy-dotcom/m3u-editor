@@ -7,7 +7,6 @@ use App\Filament\Exports\ChannelExporter;
 use App\Filament\Imports\ChannelImporter;
 use App\Filament\Resources\Channels\ChannelResource;
 use App\Filament\Resources\EpgMaps\EpgMapResource;
-use App\Filament\Support\LivePlaylistOutputFields;
 use App\Jobs\ChannelFindAndReplace;
 use App\Jobs\ChannelFindAndReplaceReset;
 use App\Jobs\MapPlaylistChannelsToEpg;
@@ -58,7 +57,6 @@ class ListChannels extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
-            LivePlaylistOutputFields::mergedSortAction(fn () => $this->activeTab),
             CreateAction::make()
                 ->label(__('Create Custom Channel'))
                 ->modalHeading(__('New Custom Channel'))

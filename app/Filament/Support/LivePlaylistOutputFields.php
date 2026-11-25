@@ -2,10 +2,8 @@
 
 namespace App\Filament\Support;
 
-use App\Models\MergedPlaylist;
-use Closure;
-use Filament\Actions\Action;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Toggle;
 
 final class LivePlaylistOutputFields
 {
@@ -24,25 +22,23 @@ final class LivePlaylistOutputFields
         ];
     }
 
-    public static function mergedSortAction(Closure $activeTab): Action
+    public static function sortToggles(): array
     {
-        $playlistQuery = fn () => MergedPlaylist::query()
-            ->where('user_id', auth()->id())
-            ->whereKey((int) substr((string) $activeTab(), 7));
-        $options = ['default' => __('Default'), 'az' => __('A–Z')];
-
-        return Action::make('sortMergedPlaylist')
-            ->label(__('Sort merged playlist'))
-            ->visible(fn (): bool => str_starts_with((string) $activeTab(), 'merged_'))
-            ->fillForm(fn (): array => $playlistQuery()->firstOrFail()
-                ->only(['live_group_sort', 'live_channel_sort']))
-            ->schema([
-                Select::make('live_group_sort')->label(__('Live groups'))->options($options)->required(),
-                Select::make('live_channel_sort')->label(__('Live channels within each group'))->options($options)->required(),
-            ])
-            ->action(function (array $data) use ($playlistQuery): void {
-                $playlistQuery()->firstOrFail()->update($data);
-            })
-            ->successNotificationTitle(__('Merged playlist sort saved'));
+        return [
+            Toggle::make('live_group_sort')
+                ->label(__('Sort live groups A–Z'))
+                ->helperText(__('When off, use the existing group order.'))
+                ->inline(false)
+                ->default(false)
+                ->afterStateHydrated(fn (Toggle $component, mixed $state) => $component->state($state === 'az'))
+                ->dehydrateStateUsing(fn (bool $state): string => $state ? 'az' : 'default'),
+            Toggle::make('live_channel_sort')
+                ->label(__('Sort live channels A–Z within each group'))
+                ->helperText(__('When off, use the existing channel order.'))
+                ->inline(false)
+                ->default(false)
+                ->afterStateHydrated(fn (Toggle $component, mixed $state) => $component->state($state === 'az'))
+                ->dehydrateStateUsing(fn (bool $state): string => $state ? 'az' : 'default'),
+        ];
     }
 }

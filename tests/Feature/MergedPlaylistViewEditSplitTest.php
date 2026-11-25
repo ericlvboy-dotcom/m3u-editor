@@ -36,3 +36,20 @@ it('renders the merged playlist edit page without the moved detail tabs', functi
         ->assertDontSeeText('Manage playlist links and URL options.')
         ->assertDontSeeText('Xtream API connection details.');
 });
+
+it('loads and saves the merged playlist alphabetical sorting switches', function () {
+    $merged = MergedPlaylist::factory()->for($this->user)->create([
+        'live_group_sort' => 'az',
+        'live_channel_sort' => 'default',
+    ]);
+
+    Livewire::test(EditMergedPlaylist::class, ['record' => $merged->getRouteKey()])
+        ->assertFormSet(['live_group_sort' => true, 'live_channel_sort' => false])
+        ->fillForm(['live_group_sort' => false, 'live_channel_sort' => true])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    $merged->refresh();
+    expect($merged->live_group_sort)->toBe('default')
+        ->and($merged->live_channel_sort)->toBe('az');
+});
