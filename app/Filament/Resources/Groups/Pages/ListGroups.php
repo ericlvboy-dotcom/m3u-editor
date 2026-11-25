@@ -5,7 +5,6 @@ namespace App\Filament\Resources\Groups\Pages;
 use App\Filament\Resources\Groups\GroupResource;
 use App\Jobs\GroupFindAndReplace;
 use App\Jobs\GroupFindAndReplaceReset;
-use App\Models\MergedPlaylist;
 use App\Models\Playlist;
 use App\Services\FindReplaceService;
 use App\Services\MergedGroupService;
@@ -136,11 +135,6 @@ class ListGroups extends ListRecords
                     ['type', 'live'],
                 ]))
                 ->badge($playlist->liveGroups()->count()),
-        ])->union(
-            MergedPlaylist::where('user_id', auth()->id())->orderBy('name')->get()->mapWithKeys(fn (MergedPlaylist $playlist) => [
-                'merged_'.$playlist->id => Tab::make(__('Merged playlist: :name', ['name' => $playlist->name]))
-                    ->modifyQueryUsing(fn ($query) => $query->whereIn('groups.playlist_id', $playlist->sourcePlaylistIds('live'))),
-            ]),
-        )->all();
+        ])->all();
     }
 }

@@ -74,30 +74,20 @@ it('lists one live Xtream category and retains each channel after final names co
         ->and(array_unique(array_column($streams, 'category_id')))->toBe([$categories[0]['category_id']]);
 })->with([false, true]);
 
-it('shows a merged playlist in both live management tables', function () {
+it('shows source playlists without merged playlist tabs in live management', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
     $source = Playlist::factory()->for($user)->create();
     $merged = MergedPlaylist::factory()->for($user)->create();
     $merged->playlists()->attach($source->id, ['include_live' => true]);
 
-    $group = Group::factory()->for($user)->for($source)->create(['type' => 'live']);
-    $channel = Channel::factory()->for($user)->for($source)->for($group)->create(['is_vod' => false]);
-    $otherSource = Playlist::factory()->for($user)->create();
-    $otherGroup = Group::factory()->for($user)->for($otherSource)->create(['type' => 'live']);
-    $otherChannel = Channel::factory()->for($user)->for($otherSource)->for($otherGroup)->create(['is_vod' => false]);
+    $groupTabs = Livewire::test(ListGroups::class)->instance()->getTabs();
+    $channelTabs = Livewire::test(ListChannels::class)->instance()->getTabs();
 
-    Livewire::test(ListChannels::class)
-        ->set('activeTab', 'merged_'.$merged->id)
-        ->loadTable()
-        ->assertCanSeeTableRecords([$channel])
-        ->assertCanNotSeeTableRecords([$otherChannel]);
-
-    Livewire::test(ListGroups::class)
-        ->set('activeTab', 'merged_'.$merged->id)
-        ->loadTable()
-        ->assertCanSeeTableRecords([$group])
-        ->assertCanNotSeeTableRecords([$otherGroup]);
+    expect($groupTabs)->toHaveKey($source->id)
+        ->not->toHaveKey('merged_'.$merged->id)
+        ->and($channelTabs)->toHaveKey('playlist_'.$source->id)
+        ->not->toHaveKey('merged_'.$merged->id);
 });
 
 it('sorts merged live groups and their channels independently in the exported playlist', function () {
