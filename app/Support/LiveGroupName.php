@@ -3,10 +3,10 @@
 namespace App\Support;
 
 /**
- * Shared normalization for exported live group names.
+ * Shared normalization and coalescing of final live-group names.
  *
- * This is deliberately independent of playlist source IDs: two groups with the
- * same final displayed name must have the same grouping key.
+ * The exported category identity is its final displayed name, not its source
+ * group ID. This helper does not deduplicate channels.
  */
 final class LiveGroupName
 {
@@ -24,5 +24,24 @@ final class LiveGroupName
     public static function key(string $name, string $mode = 'original'): string
     {
         return self::format($name, $mode);
+    }
+
+    /**
+     * Group channel records by their final group name while retaining every
+     * record and the first-seen group order.
+     *
+     * @param iterable<array{group:string,channel:mixed}> $entries
+     * @return array<string, list<mixed>>
+     */
+    public static function coalesce(iterable $entries, string $mode = 'original'): array
+    {
+        $groups = [];
+
+        foreach ($entries as $entry) {
+            $name = self::key($entry['group'], $mode);
+            $groups[$name][] = $entry['channel'];
+        }
+
+        return $groups;
     }
 }
