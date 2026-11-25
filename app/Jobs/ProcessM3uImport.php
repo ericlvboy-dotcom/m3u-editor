@@ -718,10 +718,11 @@ class ProcessM3uImport implements ShouldQueue
                         if ($this->preprocess && ! $this->shouldIncludeChannel($category['category_name'] ?? '')) {
                             continue;
                         }
+                        $name = $item->name ?? $item->title ?? "Live stream {$item->stream_id}";
                         $channel = [
                             ...$channelFields,
-                            'title' => $item->name,
-                            'name' => $item->name,
+                            'title' => $name,
+                            'name' => $name,
                             'url' => $this->applyUrlFindReplaceRules("$streamBaseUrl/{$item->stream_id}.$output"),
                             'logo_internal' => Str::replace(' ', '%20', $item->stream_icon ?? ''), // internal logo path
                             'group' => $category['category_name'] ?? '',
@@ -772,10 +773,11 @@ class ProcessM3uImport implements ShouldQueue
                             continue;
                         }
                         $extension = $item->container_extension ?? 'mp4';
+                        $name = $item->name ?? $item->title ?? "VOD stream {$item->stream_id}";
                         $channel = [
                             ...$channelFields,
-                            'title' => $item->name,
-                            'name' => $item->name,
+                            'title' => $name,
+                            'name' => $name,
                             'url' => $this->applyUrlFindReplaceRules("$vodBaseUrl/{$item->stream_id}.".$extension),
                             'logo_internal' => Str::replace(' ', '%20', $item->stream_icon ?? ''), // internal logo path
                             'group' => $category['category_name'] ?? '',
