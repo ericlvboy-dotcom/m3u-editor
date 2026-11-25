@@ -49,6 +49,10 @@ class ReleaseLogs extends Page
     public function getHeaderActions(): array
     {
         return [
+            Action::make('github')
+                ->label(__('GitHub Releases'))
+                ->icon('heroicon-o-arrow-top-right-on-square')
+                ->url('https://github.com/'.config('dev.repo').'/releases', shouldOpenInNewTab: true),
             Action::make('refresh')
                 ->label(__('Refresh'))
                 ->icon('heroicon-o-arrow-path')
@@ -76,7 +80,7 @@ class ReleaseLogs extends Page
     {
         $this->currentVersion = VersionServiceProvider::getVersion();
         $this->currentBranch = GitInfo::getBranch() ?? 'master';
-        $this->filter = $this->currentBranch; // Default filter to current branch
+        $this->filter = in_array($this->currentBranch, ['dev', 'experimental'], true) ? $this->currentBranch : 'master';
         $this->loadReleases();
     }
 
