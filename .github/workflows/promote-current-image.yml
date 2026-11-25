@@ -1,0 +1,26 @@
+name: Promote verified image
+on:
+  push:
+    branches: [rebuild/clean-upstream-20261124]
+    paths: [.github/workflows/promote-current-image.yml]
+permissions:
+  contents: read
+  packages: write
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tag and verify the existing image
+        env:
+          IMAGE: ghcr.io/ericlvboy-dotcom/m3u-editor
+          DIGEST: sha256:010eecd031e9a9a9dbe5fdc91bb965a5f56bf41351237ad7dd041a3fc1da4917
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create --tag "$IMAGE:latest" "$IMAGE@$DIGEST"
+          docker buildx imagetools inspect "$IMAGE:latest" | grep -Eq "^Digest:[[:space:]]+$DIGEST$"

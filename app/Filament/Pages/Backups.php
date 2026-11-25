@@ -44,7 +44,7 @@ class Backups extends BaseBackups
         return null;
     }
 
-    protected function getActions(): array
+    protected function getHeaderActions(): array
     {
         $data = [];
         foreach (FilamentSpatieLaravelBackup::getDisks() as $disk) {

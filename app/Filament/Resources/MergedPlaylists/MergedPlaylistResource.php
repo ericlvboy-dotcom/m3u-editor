@@ -11,6 +11,7 @@ use App\Filament\Resources\MergedPlaylists\Pages\ViewMergedPlaylist;
 use App\Filament\Resources\MergedPlaylists\RelationManagers\PlaylistsRelationManager;
 use App\Filament\Support\DefaultAuthFields;
 use App\Filament\Support\DvrRequestsAiostreamsTabs;
+use App\Filament\Support\LivePlaylistOutputFields;
 use App\Models\MergedPlaylist;
 use App\Models\PlaylistAuth;
 use App\Models\StreamProfile;
@@ -287,32 +288,8 @@ class MergedPlaylistResource extends Resource implements CopilotResource
                         ->columnSpanFull()
                         ->columns(3)
                         ->schema([
-                            Toggle::make('auto_channel_increment')
-                                ->label(__('Auto channel number increment'))
-                                ->columnSpan(1)
-                                ->inline(false)
-                                ->live()
-                                ->default(false)
-                                ->helperText(__('If no channel number is set, output an automatically incrementing number.')),
-                            Toggle::make('force_channel_numbering')
-                                ->label(__('Force channel number override'))
-                                ->columnSpan(1)
-                                ->inline(false)
-                                ->live()
-                                ->default(false)
-                                ->hidden(fn (Get $get): bool => ! $get('auto_channel_increment'))
-                                ->hintIcon(
-                                    'heroicon-m-question-mark-circle',
-                                    tooltip: __('When enabled, the incrementing channel number always replaces the number provided by the source feed, instead of only filling in missing numbers.')
-                                )
-                                ->helperText(__('Always assign an incrementing channel number, overriding any number provided by the source.')),
-                            TextInput::make('channel_start')
-                                ->helperText(__('The starting channel number.'))
-                                ->columnSpan(1)
-                                ->rules(['min:1'])
-                                ->type('number')
-                                ->hidden(fn (Get $get): bool => ! $get('auto_channel_increment'))
-                                ->required(),
+                            ...LivePlaylistOutputFields::sortToggles(),
+                            ...LivePlaylistOutputFields::caseFields(),
                             Toggle::make('sort_by_channel_number')
                                 ->label(__('Sort by channel number'))
                                 ->columnSpan(1)

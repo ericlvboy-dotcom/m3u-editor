@@ -36,3 +36,21 @@ it('renders the merged playlist edit page without the moved detail tabs', functi
         ->assertDontSeeText('Manage playlist links and URL options.')
         ->assertDontSeeText('Xtream API connection details.');
 });
+
+it('loads and saves the merged playlist alphabetical sorting switches', function () {
+    $merged = MergedPlaylist::factory()->for($this->user)->create([
+        'user_agent' => 'M3U Editor Test',
+        'live_group_sort' => 'az',
+        'live_channel_sort' => 'default',
+    ]);
+
+    Livewire::test(EditMergedPlaylist::class, ['record' => $merged->getRouteKey()])
+        ->assertFormSet(['sort_live_groups_alpha' => true, 'sort_live_channels_alpha' => false])
+        ->fillForm(['sort_live_groups_alpha' => false, 'sort_live_channels_alpha' => true])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    $merged->refresh();
+    expect($merged->live_group_sort)->toBe('default')
+        ->and($merged->live_channel_sort)->toBe('az');
+});

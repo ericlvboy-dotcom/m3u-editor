@@ -47,7 +47,7 @@ class ListChannels extends ListRecords
 
     public function getSubheading(): string|Htmlable|null
     {
-        return __('NOTE: Playlist channel output order is based on: 1 Sort order, 2 Channel no. and 3 Channel title - in that order. You can edit your Playlist output to auto sort as well, which will define the sort order based on the playlist order.');
+        return __('NOTE: Playlist channel output order is based on: 1 Sort order, 2 Channel no. and 3 Channel title - in that order.');
     }
 
     #[Url(as: 'status')]

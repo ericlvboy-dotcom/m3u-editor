@@ -1,11 +1,14 @@
 <?php
 
+use App\Filament\Pages\Backups;
 use App\Jobs\CreateBackup;
 use App\Jobs\PruneOldBackups;
+use App\Models\User;
 use App\Settings\GeneralSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Storage;
+use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
 
@@ -107,4 +110,17 @@ it('prunes once the scheduled backup it follows exists', function () {
 
     Storage::disk('local')->assertMissing($expired);
     Storage::disk('local')->assertExists($replacement);
+});
+
+it('starts backup creation from the admin backups page', function () {
+    Bus::fake();
+    $this->actingAs(User::factory()->admin()->create());
+
+    Livewire::test(Backups::class)
+        ->assertSuccessful()
+        ->assertSeeText('Actions')
+        ->assertActionExists('Create Backup')
+        ->callAction('Create Backup', data: ['include_files' => false]);
+
+    Bus::assertDispatched(CreateBackup::class);
 });

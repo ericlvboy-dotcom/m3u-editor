@@ -10,6 +10,7 @@ use App\Models\MergedPlaylist;
 use App\Models\Playlist;
 use App\Models\PlaylistAlias;
 use App\Models\Series;
+use App\Support\LiveGroupName;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\DB;
@@ -93,6 +94,44 @@ class XtreamCategoryService
      */
     public static function groupCategories($playlist, bool $isVod, array $aliasGroupFilter = []): array
     {
+        return $isVod
+            ? self::orderedGroupCategories($playlist, true, $aliasGroupFilter)
+            : self::liveCategoryIndex($playlist, $aliasGroupFilter)['categories'];
+    }
+
+    /**
+     * @return array{categories: list<array{category_id: string, category_name: string, parent_id: int}>, canonical: array<int|string, string>, members: array<int|string, list<string>>}
+     */
+    public static function liveCategoryIndex(Playlist|MergedPlaylist|PlaylistAlias $playlist, array $aliasGroupFilter = []): array
+    {
+        $categories = [];
+        $canonicalByName = [];
+        $canonicalById = [];
+        $members = [];
+
+        foreach (self::orderedGroupCategories($playlist, false, $aliasGroupFilter) as $category) {
+            $id = $category['category_id'];
+            $name = $category['category_name'];
+
+            $canonicalId = $canonicalByName[$name] ??= $id;
+            $canonicalById[$id] = $canonicalId;
+            $members[$canonicalId][] = $id;
+            if ($id === $canonicalId) {
+                $categories[] = $category;
+            }
+        }
+
+        $outputPlaylist = $playlist instanceof PlaylistAlias ? $playlist->getEffectivePlaylist() : $playlist;
+        if ($outputPlaylist instanceof MergedPlaylist && $outputPlaylist->live_group_sort === 'az'
+            && ! ($playlist instanceof PlaylistAlias && $playlist->hasCustomLiveGroupSort())) {
+            usort($categories, fn (array $a, array $b): int => strnatcasecmp($a['category_name'], $b['category_name']));
+        }
+
+        return ['categories' => $categories, 'canonical' => $canonicalById, 'members' => $members];
+    }
+
+    private static function orderedGroupCategories(Playlist|MergedPlaylist|PlaylistAlias $playlist, bool $isVod, array $aliasGroupFilter): array
+    {
         // Merged sources flagged only_unmatched hide some of their movies, so a VOD group
         // only counts the movies the merge actually lists. The rule correlates to the
         // merged_playlist_playlist row that groups() joins through.
@@ -114,8 +153,14 @@ class XtreamCategoryService
             }
         };
 
+        $outputPlaylist = $playlist instanceof PlaylistAlias ? $playlist->getEffectivePlaylist() : $playlist;
+        $liveSourceIds = ! $isVod && $outputPlaylist instanceof MergedPlaylist
+            ? $outputPlaylist->sourcePlaylistIds('live')
+            : null;
+
         $groups = $playlist->groups()
-            ->with('parent')
+            ->when($liveSourceIds !== null, fn ($query) => $query->whereIn('groups.playlist_id', $liveSourceIds))
+            ->with($isVod ? ['parent'] : ['parent', 'playlist:id,live_group_prefix'])
             ->where(function ($query) use ($channelConstraint): void {
                 $query->whereHas('channels', $channelConstraint)
                     ->orWhereHas('children.channels', $channelConstraint);
@@ -141,12 +186,25 @@ class XtreamCategoryService
                 continue;
             }
 
+            $name = $group->parent?->name ?? $group->name;
+            if (! $isVod) {
+                $name = LiveGroupName::display(
+                    $name,
+                    $outputPlaylist->live_group_case ?? 'original',
+                    $group->parent_id || $group->is_merged ? null : $group->playlist?->live_group_prefix,
+                );
+            }
+
             $categories[$id] = [
                 'category_id' => $id,
-                'category_name' => $group->parent?->name ?? $group->name,
+                'category_name' => $name,
                 'parent_id' => 0,
                 '_sort' => $sort,
             ];
+        }
+
+        if (! $isVod) {
+            ksort($categories, SORT_NUMERIC);
         }
 
         return self::sortAndStripSortKey(array_values($categories));

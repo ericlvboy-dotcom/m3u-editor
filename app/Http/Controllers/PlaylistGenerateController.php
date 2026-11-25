@@ -16,6 +16,8 @@ use App\Models\PlaylistAlias;
 use App\Models\PlaylistAuth;
 use App\Services\ChannelNumberSequence;
 use App\Services\PlaylistUrlService;
+use App\Services\XtreamCategoryService;
+use App\Support\LiveGroupName;
 use Illuminate\Http\Request;
 use Illuminate\Support\LazyCollection;
 
@@ -117,6 +119,9 @@ class PlaylistGenerateController extends Controller
                 // Memoized by playlist_id so a batch of channels sharing the same source
                 // playlist (the common case) only resolves it once rather than per row.
                 $sourcePlaylistCache = [];
+                $outputPlaylist = $playlist instanceof PlaylistAlias ? $playlist->getEffectivePlaylist() : $playlist;
+                $groupCase = $outputPlaylist->live_group_case ?? 'original';
+                $channelCase = $outputPlaylist->live_channel_case ?? 'original';
                 foreach ($cursor as $channel) {
                     [$channelSourcePlaylist, $channelProxyEnabled, $channelMfRewriteEnabled] = self::resolveChannelProxyContext(
                         $playlist,
@@ -154,6 +159,18 @@ class PlaylistGenerateController extends Controller
                             $groupName = json_decode($channel->custom_group_name, true);
                             $group = $groupName['en'] ?? $groupName[array_key_first($groupName)] ?? '';
                         }
+                    }
+
+                    if (! $isCustomContext && ! $channel->is_vod) {
+                        $group = LiveGroupName::display(
+                            ($channel->merged_group_name !== null && $channel->merged_group_name !== '')
+                                ? $channel->merged_group_name
+                                : ($channel->group_name ?? $group),
+                            $groupCase,
+                            $channel->merged_group_id || $channel->source_group_is_merged ? null : $channelSourcePlaylist?->live_group_prefix,
+                        );
+                        $title = LiveGroupName::format($title ?? '', $channelCase);
+                        $name = LiveGroupName::format($name ?? '', $channelCase);
                     }
 
                     // Get the TVG ID
@@ -743,7 +760,7 @@ class PlaylistGenerateController extends Controller
         $sourcePlaylistId = $channel->playlist_id;
         if ($sourcePlaylistId !== null) {
             if (! array_key_exists($sourcePlaylistId, $sourcePlaylistCache)) {
-                $sourcePlaylistCache[$sourcePlaylistId] = Playlist::find($sourcePlaylistId, ['id', 'xtream', 'profiles_enabled', 'xtream_config']);
+                $sourcePlaylistCache[$sourcePlaylistId] = Playlist::find($sourcePlaylistId, ['id', 'xtream', 'profiles_enabled', 'xtream_config', 'live_group_prefix']);
             }
             $channelSourcePlaylist = $sourcePlaylistCache[$sourcePlaylistId];
         } else {
@@ -809,6 +826,7 @@ class PlaylistGenerateController extends Controller
             // the custom tag name/order so we can order in SQL and avoid a PHP-side resort.
             ->selectRaw('channels.*')
             ->selectRaw('groups.name as group_name')
+            ->selectRaw('groups.is_merged as source_group_is_merged')
             ->selectRaw('parent_groups.name as merged_group_name')
             ->selectRaw('parent_groups.id as merged_group_id')
             ->selectRaw('COALESCE(parent_groups.sort_order, groups.sort_order) as group_sort_order')
@@ -837,13 +855,17 @@ class PlaylistGenerateController extends Controller
         $isCustomContext = $playlist instanceof CustomPlaylist
             || ($playlist instanceof PlaylistAlias && ! empty($playlist->custom_playlist_id));
 
+        $outputPlaylist = $playlist instanceof PlaylistAlias ? $playlist->getEffectivePlaylist() : $playlist;
+        $hasMergedLiveSort = $isVod !== true && $outputPlaylist instanceof MergedPlaylist
+            && ($outputPlaylist->live_group_sort === 'az' || $outputPlaylist->live_channel_sort === 'az');
+
         // Optional flat channel number ordering, ahead of any group ordering. Channels
         // without a number (NULL or 0, matching the output's "no number" check) go last
         // on every driver, then fall through to the standard ordering below. A custom
         // playlist's pivot number wins when set, as it does for tvg-chno. 0 is folded
         // into NULL so unnumbered channels tie here regardless of driver NULL ordering.
         // Sub-channels ("5.1") follow their major number, from the same source as it.
-        if ($playlist->sort_by_channel_number) {
+        if ($playlist->sort_by_channel_number && ! $hasMergedLiveSort) {
             if ($isCustomContext) {
                 $query->orderByRaw('CASE WHEN COALESCE(NULLIF(channel_custom_playlist.channel_number, 0), NULLIF(channels.channel, 0)) IS NULL THEN 1 ELSE 0 END')
                     ->orderByRaw('COALESCE(NULLIF(channel_custom_playlist.channel_number, 0), NULLIF(channels.channel, 0))')
@@ -896,7 +918,8 @@ class PlaylistGenerateController extends Controller
                 ->orderByRaw('COALESCE(channel_custom_playlist.sort, channels.sort)')
                 ->orderByRaw('COALESCE(channel_custom_playlist.channel_number, channels.channel)')
                 ->orderByRaw(self::CUSTOM_CHANNEL_MINOR_ORDER)
-                ->orderBy('channels.title');
+                ->orderBy('channels.title')
+                ->orderBy('channels.id');
         } else {
             // Per-alias custom live group ordering (optional). When enabled, the
             // selected live groups are ranked by the alias's saved order; any group
@@ -913,6 +936,25 @@ class PlaylistGenerateController extends Controller
                     'CASE channels.group_internal '.implode(' ', $whenClauses)." ELSE {$elseValue} END",
                     $order
                 );
+            }
+
+            if ($hasMergedLiveSort) {
+                $index = XtreamCategoryService::liveCategoryIndex($playlist);
+                $ranks = array_flip(array_column($index['categories'], 'category_id'));
+                if ($index['canonical'] !== []) {
+                    $cases = [];
+                    foreach ($index['canonical'] as $id => $canonicalId) {
+                        // Category IDs and ranks are database integers.
+                        $cases[] = 'WHEN '.(int) $id.' THEN '.(int) $ranks[$canonicalId];
+                    }
+                    $query->orderByRaw(
+                        'CASE WHEN channels.is_vod THEN NULL ELSE CASE COALESCE(parent_groups.id, groups.id) '
+                        .implode(' ', $cases).' ELSE '.count($ranks).' END END'
+                    );
+                }
+                if ($outputPlaylist->live_channel_sort === 'az') {
+                    $query->orderByRaw("CASE WHEN channels.is_vod THEN NULL ELSE LOWER(COALESCE(channels.title_custom, channels.title, '')) END");
+                }
             }
 
             // Standard ordering for non-custom playlists (merged groups rank by the parent,

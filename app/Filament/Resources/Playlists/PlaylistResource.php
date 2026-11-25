@@ -24,6 +24,7 @@ use App\Filament\Resources\Playlists\Pages\MigrateProvider;
 use App\Filament\Resources\Playlists\Pages\ViewPlaylist;
 use App\Filament\Support\DefaultAuthFields;
 use App\Filament\Support\DvrRequestsAiostreamsTabs;
+use App\Filament\Support\LivePlaylistOutputFields;
 use App\Filament\Tables\SourceCategoriesTable;
 use App\Filament\Tables\SourceGroupsTable;
 use App\Jobs\CopyAttributesToPlaylist;
@@ -2934,7 +2935,7 @@ class PlaylistResource extends Resource implements CopilotResource
                         ->schema([
                             Toggle::make('enabled')
                                 ->label(__('Enabled'))
-                                ->default(true)
+                                ->default(false)
                                 ->inline(false)
                                 ->columnSpan(1),
                             Select::make('target')
@@ -3293,36 +3294,11 @@ class PlaylistResource extends Resource implements CopilotResource
                         ->hint(fn (Get $get): string => config('dev.disable_sync_logs', false) ? 'Sync logs disabled globally in settings' : '')
                         ->hintIcon(fn (Get $get): string => config('dev.disable_sync_logs', false) ? 'heroicon-m-lock-closed' : '')
                         ->helperText(__('Retain logs of playlist syncs. This is useful for debugging and tracking changes to the playlist. This can lead to increased sync time and storage usage depending on the size of the playlist.')),
-                    Toggle::make('auto_sort')
-                        ->label(__('Channel Auto Sort'))
-                        ->columnSpan(1)
-                        ->hintIcon(
-                            'heroicon-m-question-mark-circle',
-                            tooltip: __('You will need to re-sync your playlist, or wait for the next scheduled sync, if changing this. This will overwrite any existing channel sort order customization for this playlist.')
-                        )
-                        ->inline(false)
-                        ->default(true)
-                        ->helperText(__('Automatically assign Channel sort number based on playlist order')),
-                    Toggle::make('auto_sort_groups')
-                        ->label(__('Group Auto Sort'))
-                        ->columnSpan(1)
-                        ->hintIcon(
-                            'heroicon-m-question-mark-circle',
-                            tooltip: __('You will need to re-sync your playlist, or wait for the next scheduled sync, if changing this. This will overwrite any existing group sort order customization for this playlist.')
-                        )
-                        ->inline(false)
-                        ->default(true)
-                        ->helperText(__('Automatically assign Group sort number based on playlist order')),
-                    Toggle::make('auto_sort_categories')
-                        ->label(__('Category Auto Sort'))
-                        ->columnSpan(1)
-                        ->hintIcon(
-                            'heroicon-m-question-mark-circle',
-                            tooltip: __('You will need to re-sync your playlist, or wait for the next scheduled sync, if changing this. This will overwrite any existing series category sort order customization for this playlist.')
-                        )
-                        ->inline(false)
-                        ->default(false)
-                        ->helperText(__('Automatically assign Series Category sort number based on provider order')),
+                    TextInput::make('live_group_prefix')
+                        ->label(__('Live group prefix'))
+                        ->helperText(__('Clear the field to remove the prefix from live playlist output.'))
+                        ->maxLength(100),
+                    ...LivePlaylistOutputFields::caseFields(),
                     Toggle::make('disable_catchup')
                         ->label(__('Disable catch-up'))
                         ->inline(false)
@@ -3383,16 +3359,6 @@ class PlaylistResource extends Resource implements CopilotResource
                         ->type('number')
                         ->hidden(fn (Get $get): bool => ! $get('auto_channel_increment'))
                         ->required(),
-                    Toggle::make('sort_by_channel_number')
-                        ->label(__('Sort by channel number'))
-                        ->columnSpan(1)
-                        ->inline(false)
-                        ->default(false)
-                        ->hintIcon(
-                            'heroicon-m-question-mark-circle',
-                            tooltip: __('Channels without a number are output last, in the standard group order.')
-                        )
-                        ->helperText(__('Output channels ordered by channel number instead of by group.')),
                 ]),
             Section::make(__('Streaming Output'))
                 ->description(__('Output processing options'))

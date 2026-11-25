@@ -135,6 +135,6 @@ class ListGroups extends ListRecords
                     ['type', 'live'],
                 ]))
                 ->badge($playlist->liveGroups()->count()),
-        ])->toArray();
+        ])->all();
     }
 }

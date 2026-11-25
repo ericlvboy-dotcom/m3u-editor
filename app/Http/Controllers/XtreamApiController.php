@@ -67,6 +67,7 @@ use App\Support\ChannelNumber;
 use App\Support\DvrLibraryFallback;
 use App\Support\EpgProgrammeArtwork;
 use App\Support\EpisodeNumberParser;
+use App\Support\LiveGroupName;
 use App\Support\SeriesKey;
 use App\Support\TmdbRating;
 use Carbon\Carbon;
@@ -656,6 +657,12 @@ class XtreamApiController extends Controller
             $categoryId = $request->input('category_id');
             $isCategoryRequest = $categoryId && $categoryId !== 'all';
 
+            $liveCategoryIndex = $isCustomPlaylist
+                ? null
+                : XtreamCategoryService::liveCategoryIndex($playlist, $aliasLiveGroupFilter);
+            $outputPlaylist = $playlist instanceof PlaylistAlias ? $playlist->getEffectivePlaylist() : $playlist;
+            $channelCase = $isCustomPlaylist ? 'original' : ($outputPlaylist->live_channel_case ?? 'original');
+
             // Use the optimised query: JOINs instead of eager loads, SQL-level ordering, cursor-compatible.
             $channelsQuery = PlaylistGenerateController::getChannelQuery($playlist, isVod: false);
 
@@ -701,8 +708,11 @@ class XtreamApiController extends Controller
                         }
                     });
                 } else {
-                    // A merged group's category_id also matches every child folded into it.
-                    $channelsQuery->whereIn('group_id', XtreamCategoryService::resolveGroupFilterIds($categoryId));
+                    $canonicalId = $liveCategoryIndex['canonical'][$categoryId] ?? $categoryId;
+                    $memberIds = $liveCategoryIndex['members'][$canonicalId] ?? [$canonicalId];
+                    $channelsQuery->where(function ($query) use ($memberIds): void {
+                        $query->whereIn('groups.id', $memberIds)->orWhereIn('parent_groups.id', $memberIds);
+                    });
                 }
             }
 
@@ -718,7 +728,7 @@ class XtreamApiController extends Controller
 
             $cursor = $channelsQuery->cursor();
 
-            return response()->stream(function () use ($cursor, $playlist, $baseUrl, $isCustomPlaylist, $disableCatchup, $numberSequence, $categoryNumbers) {
+            return response()->stream(function () use ($cursor, $playlist, $baseUrl, $isCustomPlaylist, $disableCatchup, $numberSequence, $categoryNumbers, $liveCategoryIndex, $channelCase) {
                 $idChannelBy = $playlist->id_channel_by;
 
                 echo '[';
@@ -751,6 +761,7 @@ class XtreamApiController extends Controller
                     } else {
                         // Non-custom playlist: a group folded into a merged group reports the merged group's id.
                         $channelCategoryId = XtreamCategoryService::channelStreamCategoryId($channel);
+                        $channelCategoryId = $liveCategoryIndex['canonical'][$channelCategoryId] ?? $channelCategoryId;
                     }
 
                     $channelNo = ChannelNumber::resolve(
@@ -776,7 +787,7 @@ class XtreamApiController extends Controller
                         // Xtream clients parse `num` as an integer, so a sub-channel
                         // ("5.1") reports its major number here; tvg-id keeps the full one.
                         'num' => ChannelNumber::major($channelNo),
-                        'name' => $channel->title_custom ?? $channel->title,
+                        'name' => LiveGroupName::format($channel->title_custom ?? $channel->title ?? '', $channelCase),
                         'stream_type' => 'live',
                         'stream_id' => $channel->id,
                         'stream_icon' => $streamIcon,

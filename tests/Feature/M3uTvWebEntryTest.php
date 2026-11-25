@@ -195,3 +195,16 @@ it('removes the installed build', function () {
     expect($this->m3uTvService->installed())->toBeNull();
     $this->get('/m3u-tv/')->assertNotFound();
 });
+
+it('lets installed web apps follow the device orientation', function () {
+    m3uTvWebFakeRelease(extraEntries: [
+        'manifest.json' => '{"name":"M3U TV","display":"standalone","orientation":"portrait-primary"}',
+    ]);
+    $this->m3uTvService->installLatest();
+
+    $this->get('/m3u-tv/manifest.json')
+        ->assertOk()
+        ->assertHeader('Content-Type', 'application/manifest+json')
+        ->assertJsonPath('display', 'standalone')
+        ->assertJsonMissingPath('orientation');
+});

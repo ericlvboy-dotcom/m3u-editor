@@ -56,14 +56,16 @@ afterEach(function () {
  *                                              via the `(int)` cast).
  * @return array<string, mixed>
  */
-function xtreamImportedChannelPayloadRow(User $user, int|string|null $tvArchiveDuration): array
+function xtreamImportedChannelPayloadRow(User $user, int|string|null $tvArchiveDuration, ?string $name = 'Catchup One'): array
 {
     $stream = [
         'stream_id' => 1,
-        'name' => 'Catchup One',
         'category_id' => '1',
         'tv_archive' => 1,
     ];
+    if ($name !== null) {
+        $stream['name'] = $name;
+    }
     if ($tvArchiveDuration !== null) {
         $stream['tv_archive_duration'] = $tvArchiveDuration;
     }
@@ -129,4 +131,11 @@ it('falls back to shift=0 when tv_archive_duration is absent', function () {
     $row = xtreamImportedChannelPayloadRow($user, null);
 
     expect((int) $row['shift'])->toBe(0);
+});
+
+it('retains an unnamed Xtream live stream using its stream ID', function () {
+    $row = xtreamImportedChannelPayloadRow(User::factory()->create(), null, name: null);
+
+    expect($row['title'])->toBe('Live stream 1')
+        ->and($row['name'])->toBe('Live stream 1');
 });

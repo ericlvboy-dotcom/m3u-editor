@@ -10,7 +10,7 @@ use Illuminate\Support\ServiceProvider;
 
 class VersionServiceProvider extends ServiceProvider
 {
-    public static string $cacheKey = 'app.remoteVersion';
+    public static string $cacheKey = 'app.editorForkRemoteVersion';
 
     public static string $branch = 'master'; // Default branch, can be overridden
 
@@ -87,7 +87,7 @@ class VersionServiceProvider extends ServiceProvider
         return $remoteVersion;
     }
 
-    public static string $releasesFile = 'app/m3u_releases.json';
+    public static string $releasesFile = 'app/m3u_editor_fork_releases.json';
 
     public static function getRemoteVersion($refresh = false): string
     {
@@ -100,19 +100,11 @@ class VersionServiceProvider extends ServiceProvider
         if ($remoteVersion === null || $refresh) {
             $remoteVersion = '';
             try {
-                $response = Http::get('https://raw.githubusercontent.com/m3ue/m3u-editor/refs/heads/'.self::$branch.'/config/dev.php');
+                $repo = config('dev.repo');
+                $branch = config('dev.update_branch');
+                $response = Http::get("https://raw.githubusercontent.com/{$repo}/refs/heads/{$branch}/config/dev.php");
                 if ($response->ok()) {
-                    $results = $response->body();
-                    switch (self::$branch) {
-                        case 'dev':
-                            preg_match("/'dev_version'\s*=>\s*'([^']+)'/", $results, $matches);
-                            break;
-                        case 'experimental':
-                            preg_match("/'experimental_version'\s*=>\s*'([^']+)'/", $results, $matches);
-                            break;
-                        default:
-                            preg_match("/'version'\s*=>\s*'([^']+)'/", $results, $matches);
-                    }
+                    preg_match("/'version'\s*=>\s*'([^']+)'/", $response->body(), $matches);
                     if (! empty($matches[1])) {
                         $remoteVersion = $matches[1];
                         Cache::put(self::$cacheKey, $remoteVersion, 60 * 5);
@@ -154,6 +146,7 @@ class VersionServiceProvider extends ServiceProvider
             'User-Agent' => 'm3u-editor',
         ];
 
+        $repo = config('dev.repo');
         $buckets = ['latest' => [], 'dev' => [], 'experimental' => []];
         $page = 1;
         $pageFetchSize = 30; // items per API page
@@ -167,7 +160,7 @@ class VersionServiceProvider extends ServiceProvider
 
         try {
             while (! $isFull() && $page <= $maxPages) {
-                $response = Http::withHeaders($headers)->timeout(15)->get('https://api.github.com/repos/m3ue/m3u-editor/releases', [
+                $response = Http::withHeaders($headers)->timeout(15)->get("https://api.github.com/repos/{$repo}/releases", [
                     'per_page' => $pageFetchSize,
                     'page' => $page,
                 ]);
