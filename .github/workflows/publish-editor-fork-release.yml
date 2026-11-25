@@ -40,4 +40,70 @@ jobs:
           - Immutable image: `ghcr.io/ericlvboy-dotcom/m3u-editor@sha256:c05a766da0324634434d4eef27ab49a8b5150074d302582c9d912359ada2efe2`
 
           [Full fork diff](https://github.com/ericlvboy-dotcom/m3u-editor/compare/f5ae6de6c...a2971a6d9) · [Verified build](https://github.com/ericlvboy-dotcom/m3u-editor/actions/runs/45617053963)
+
+          ## Deploy with Docker Compose or Portainer
+
+          ### Update an existing Portainer stack
+
+          Open **Stacks → your M3U Editor stack → Editor**. Replace only the `image:` line with the digest-pinned line below and click **Update the stack**. Keep the same stack name, environment variables, and volume mappings so the editor can find its existing PostgreSQL database and files.
+
+          ```yaml
+          image: ghcr.io/ericlvboy-dotcom/m3u-editor@sha256:c05a766da0324634434d4eef27ab49a8b5150074d302582c9d912359ada2efe2
+          ```
+
+          ### Fresh install on Docker Standalone
+
+          In Portainer, choose **Stacks → Add stack → Web editor** and paste the Compose file below. Under **Environment variables**, set `APP_URL` to the address users will open, such as `http://192.168.1.10:36400`. Set separate strong values for `PG_PASSWORD` and `M3U_PROXY_TOKEN`, then select **Deploy the stack**.
+
+          For Docker Compose on the command line, save the YAML as `compose.yaml` and set the same three variables in a `.env` file beside it. Run `docker compose up -d`, then use `docker compose ps` to check startup and `docker compose logs -f m3u-editor` to view logs. Open the URL you set once the container is healthy.
+
+          ```yaml
+          services:
+            m3u-editor:
+              image: ghcr.io/ericlvboy-dotcom/m3u-editor@sha256:c05a766da0324634434d4eef27ab49a8b5150074d302582c9d912359ada2efe2
+              restart: unless-stopped
+              ports:
+                - "36400:36400"
+              environment:
+                TZ: ${TZ:-Etc/UTC}
+                APP_URL: ${APP_URL:?Set the URL users will open}
+                APP_PORT: "36400"
+                ENABLE_POSTGRES: "true"
+                POSTGRES_VERSION: "17"
+                PG_DATABASE: m3ue
+                PG_USER: m3ue
+                PG_PASSWORD: ${PG_PASSWORD:?Set a database password}
+                PG_PORT: "5432"
+                DB_CONNECTION: pgsql
+                DB_HOST: localhost
+                DB_PORT: "5432"
+                DB_DATABASE: m3ue
+                DB_USERNAME: m3ue
+                DB_PASSWORD: ${PG_PASSWORD:?Set a database password}
+                REDIS_ENABLED: "true"
+                REDIS_SERVER_PORT: "36790"
+                REDIS_HOST: localhost
+                REDIS_PASSWORD: ${M3U_PROXY_TOKEN:?Set a proxy token}
+                M3U_PROXY_ENABLED: "true"
+                M3U_PROXY_PORT: "38085"
+                M3U_PROXY_HOST: localhost
+                M3U_PROXY_TOKEN: ${M3U_PROXY_TOKEN:?Set a proxy token}
+              volumes:
+                - editor-config:/var/www/config
+                - pgdata:/var/lib/postgresql/data
+                - editor-storage:/var/www/html/storage/app/public
+              healthcheck:
+                test: ["CMD", "curl", "-f", "http://127.0.0.1:36400/up"]
+                interval: 30s
+                timeout: 10s
+                retries: 5
+                start_period: 60s
+
+          volumes:
+            editor-config:
+            pgdata:
+            editor-storage:
+          ```
+
+          [Portainer stack documentation](https://docs.portainer.io/user/docker/stacks/edit)
           NOTES
