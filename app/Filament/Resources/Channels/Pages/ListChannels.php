@@ -11,6 +11,7 @@ use App\Jobs\ChannelFindAndReplace;
 use App\Jobs\ChannelFindAndReplaceReset;
 use App\Jobs\MapPlaylistChannelsToEpg;
 use App\Models\Channel;
+use App\Models\MergedPlaylist;
 use App\Models\Playlist;
 use App\Services\EpgCacheService;
 use App\Services\PlaylistService;
@@ -47,7 +48,7 @@ class ListChannels extends ListRecords
 
     public function getSubheading(): string|Htmlable|null
     {
-        return __('NOTE: Playlist channel output order is based on: 1 Sort order, 2 Channel no. and 3 Channel title - in that order. You can edit your Playlist output to auto sort as well, which will define the sort order based on the playlist order.');
+        return __('NOTE: Playlist channel output order is based on: 1 Sort order, 2 Channel no. and 3 Channel title - in that order.');
     }
 
     #[Url(as: 'status')]
@@ -346,6 +347,10 @@ class ListChannels extends ListRecords
                     ->modifyQueryUsing(fn ($query) => $query->where('playlist_id', $playlist->id))
                     ->badge($playlistCounts->get($playlist->id, 0)),
             ])->toArray()),
+            ...MergedPlaylist::where('user_id', auth()->id())->orderBy('name')->get()->mapWithKeys(fn (MergedPlaylist $playlist) => [
+                'merged_'.$playlist->id => Tab::make(__('Merged playlist: :name', ['name' => $playlist->name]))
+                    ->modifyQueryUsing(fn ($query) => $query->whereIn('channels.playlist_id', $playlist->sourcePlaylistIds('live'))),
+            ])->all(),
         ];
     }
 

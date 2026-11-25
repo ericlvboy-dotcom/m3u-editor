@@ -11,6 +11,7 @@ use App\Filament\Resources\MergedPlaylists\Pages\ViewMergedPlaylist;
 use App\Filament\Resources\MergedPlaylists\RelationManagers\PlaylistsRelationManager;
 use App\Filament\Support\DefaultAuthFields;
 use App\Filament\Support\DvrRequestsAiostreamsTabs;
+use App\Filament\Support\LivePlaylistOutputFields;
 use App\Models\MergedPlaylist;
 use App\Models\PlaylistAuth;
 use App\Models\StreamProfile;
@@ -313,6 +314,7 @@ class MergedPlaylistResource extends Resource implements CopilotResource
                                 ->type('number')
                                 ->hidden(fn (Get $get): bool => ! $get('auto_channel_increment'))
                                 ->required(),
+                            ...LivePlaylistOutputFields::caseFields(),
                             Toggle::make('sort_by_channel_number')
                                 ->label(__('Sort by channel number'))
                                 ->columnSpan(1)

@@ -21,6 +21,13 @@ final class LiveGroupName
         };
     }
 
+    public static function display(string $name, string $mode, ?string $prefix): string
+    {
+        $name = self::format($name, $mode);
+
+        return $prefix === null || trim($prefix) === '' ? $name : trim($prefix).' '.$name;
+    }
+
     public static function key(string $name, string $mode = 'original'): string
     {
         return self::format($name, $mode);
@@ -30,7 +37,7 @@ final class LiveGroupName
      * Group channel records by their final group name while retaining every
      * record and the first-seen group order.
      *
-     * @param iterable<array{group:string,channel:mixed}> $entries
+     * @param  iterable<array{group:string,channel:mixed}>  $entries
      * @return array<string, list<mixed>>
      */
     public static function coalesce(iterable $entries, string $mode = 'original'): array

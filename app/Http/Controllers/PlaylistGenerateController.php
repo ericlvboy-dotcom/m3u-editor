@@ -16,6 +16,7 @@ use App\Models\PlaylistAlias;
 use App\Models\PlaylistAuth;
 use App\Services\ChannelNumberSequence;
 use App\Services\PlaylistUrlService;
+use App\Support\LiveGroupName;
 use Illuminate\Http\Request;
 use Illuminate\Support\LazyCollection;
 
@@ -117,6 +118,9 @@ class PlaylistGenerateController extends Controller
                 // Memoized by playlist_id so a batch of channels sharing the same source
                 // playlist (the common case) only resolves it once rather than per row.
                 $sourcePlaylistCache = [];
+                $outputPlaylist = $playlist instanceof PlaylistAlias ? $playlist->getEffectivePlaylist() : $playlist;
+                $groupCase = $outputPlaylist->live_group_case ?? 'original';
+                $channelCase = $outputPlaylist->live_channel_case ?? 'original';
                 foreach ($cursor as $channel) {
                     [$channelSourcePlaylist, $channelProxyEnabled, $channelMfRewriteEnabled] = self::resolveChannelProxyContext(
                         $playlist,
@@ -154,6 +158,18 @@ class PlaylistGenerateController extends Controller
                             $groupName = json_decode($channel->custom_group_name, true);
                             $group = $groupName['en'] ?? $groupName[array_key_first($groupName)] ?? '';
                         }
+                    }
+
+                    if (! $isCustomContext && ! $channel->is_vod) {
+                        $group = LiveGroupName::display(
+                            ($channel->merged_group_name !== null && $channel->merged_group_name !== '')
+                                ? $channel->merged_group_name
+                                : ($channel->group_name ?? $group),
+                            $groupCase,
+                            $channel->merged_group_id || $channel->source_group_is_merged ? null : $channelSourcePlaylist?->live_group_prefix,
+                        );
+                        $title = LiveGroupName::format($title ?? '', $channelCase);
+                        $name = LiveGroupName::format($name ?? '', $channelCase);
                     }
 
                     // Get the TVG ID
@@ -743,7 +759,7 @@ class PlaylistGenerateController extends Controller
         $sourcePlaylistId = $channel->playlist_id;
         if ($sourcePlaylistId !== null) {
             if (! array_key_exists($sourcePlaylistId, $sourcePlaylistCache)) {
-                $sourcePlaylistCache[$sourcePlaylistId] = Playlist::find($sourcePlaylistId, ['id', 'xtream', 'profiles_enabled', 'xtream_config']);
+                $sourcePlaylistCache[$sourcePlaylistId] = Playlist::find($sourcePlaylistId, ['id', 'xtream', 'profiles_enabled', 'xtream_config', 'live_group_prefix']);
             }
             $channelSourcePlaylist = $sourcePlaylistCache[$sourcePlaylistId];
         } else {
@@ -809,6 +825,7 @@ class PlaylistGenerateController extends Controller
             // the custom tag name/order so we can order in SQL and avoid a PHP-side resort.
             ->selectRaw('channels.*')
             ->selectRaw('groups.name as group_name')
+            ->selectRaw('groups.is_merged as source_group_is_merged')
             ->selectRaw('parent_groups.name as merged_group_name')
             ->selectRaw('parent_groups.id as merged_group_id')
             ->selectRaw('COALESCE(parent_groups.sort_order, groups.sort_order) as group_sort_order')
@@ -896,7 +913,8 @@ class PlaylistGenerateController extends Controller
                 ->orderByRaw('COALESCE(channel_custom_playlist.sort, channels.sort)')
                 ->orderByRaw('COALESCE(channel_custom_playlist.channel_number, channels.channel)')
                 ->orderByRaw(self::CUSTOM_CHANNEL_MINOR_ORDER)
-                ->orderBy('channels.title');
+                ->orderBy('channels.title')
+                ->orderBy('channels.id');
         } else {
             // Per-alias custom live group ordering (optional). When enabled, the
             // selected live groups are ranked by the alias's saved order; any group
