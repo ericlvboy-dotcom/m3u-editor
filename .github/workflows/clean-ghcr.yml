@@ -1,0 +1,55 @@
+name: Clean superseded container versions
+on:
+  push:
+    branches: [maintenance/ghcr-cleanup]
+    paths: [.github/workflows/clean-ghcr.yml]
+permissions:
+  packages: write
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Preserve the verified image and delete older versions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KEEP: sha256:010eecd031e9a9a9dbe5fdc91bb965a5f56bf41351237ad7dd041a3fc1da4917
+        run: |
+          set -euo pipefail
+          endpoint="users/ericlvboy-dotcom/packages/container/m3u-editor/versions"
+          registry="https://ghcr.io/v2/ericlvboy-dotcom/m3u-editor"
+          token=$(curl -fsS 'https://ghcr.io/token?service=ghcr.io&scope=repository:ericlvboy-dotcom/m3u-editor:pull' | jq -er .token)
+          echo "::add-mask::$token"
+          manifest() {
+            curl -fsS -H "Authorization: Bearer $token" -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' "$registry/manifests/$1"
+          }
+          verify_latest() {
+            manifest latest | cmp -s "$RUNNER_TEMP/current-index.json" -
+          }
+          manifest "$KEEP" > "$RUNNER_TEMP/current-index.json"
+          verify_latest
+          jq -e '[.manifests[].platform.architecture] | (index("amd64") != null and index("arm64") != null)' "$RUNNER_TEMP/current-index.json"
+          declare -A protected=()
+          protect() {
+            local digest="$1" body child
+            if [[ -n "${protected[$digest]:-}" ]]; then
+              return
+            fi
+            protected["$digest"]=1
+            body=$(manifest "$digest")
+            while IFS= read -r child; do
+              protect "$child"
+            done < <(jq -r '.manifests[]?.digest' <<< "$body")
+          }
+          protect "$KEEP"
+          keep_json=$(printf '%s\n' "${!protected[@]}" | jq -Rn '[inputs]')
+          versions=$(gh api --paginate --slurp "$endpoint?per_page=100" | jq 'add')
+          jq -e --arg keep "$KEEP" 'any(.[]; .name == $keep and (.metadata.container.tags | index("latest") != null))' <<< "$versions"
+          candidates=$(jq -r --argjson keep "$keep_json" '.[] | select(.name as $digest | ($keep | index($digest)) == null) | .id' <<< "$versions")
+          for id in $candidates; do
+            verify_latest
+            gh api --method DELETE "$endpoint/$id"
+            echo "Deleted package version $id"
+          done
+          verify_latest
+          gh api --paginate --slurp "$endpoint?per_page=100" |
+            jq -e --argjson keep "$keep_json" 'add | all(.[]; .name as $digest | ($keep | index($digest)) != null)'
