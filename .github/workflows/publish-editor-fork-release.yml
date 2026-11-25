@@ -15,21 +15,29 @@ jobs:
           GH_REPO: ericlvboy-dotcom/m3u-editor
         run: |
           set -euo pipefail
-          gh release create v0.14.6 --target a2971a6d9066bb2f63ff98744dd3063113a41ee8 --latest --title 'M3U Editor Fork v0.14.6' --notes-file - <<'NOTES'
-          ## Changes in this fork build
+          gh release edit v0.14.6 --latest --notes-file - <<'NOTES'
+          ## Live playlist output
 
-          - In-app update checks and Release Logs use this GitHub fork.
-          - Restored the Create Backup action on the admin Backups page.
-          - Installed M3U TV can follow the device orientation.
-          - Updated League CSV to 9.29.1 to resolve a Composer security advisory.
+          - Add, change, or clear a live group prefix in a regular playlist’s Output settings. The prefix applies when the playlist is generated.
+          - Set live group and channel name casing independently. Choose Original, Uppercase, Title Case, or Lowercase.
+          - Combine live groups that resolve to the same displayed name in regular and merged output, including groups from different source playlists. Keep every channel entry. M3U and Xtream use the resulting live group names.
+          - Sort merged live groups A–Z and sort live channels A–Z within each group with separate switches under Merged Playlist → Output. Turning a switch off uses the existing order. Saved settings reload when the playlist is edited.
+          - Remove the Channel Auto Sort, Group Auto Sort, Category Auto Sort, and Sort by channel number controls from regular playlist Output. The Manage Live Groups and Channels tabs show source playlists.
 
-          ## Docker image
+          ## Import and app fixes
 
-          Use `ghcr.io/ericlvboy-dotcom/m3u-editor:latest` for AMD64 or ARM64. This release is pinned to:
+          - Retain live and VOD Xtream entries when the provider omits the name. Use the supplied title or a fallback based on the stream ID.
+          - Restore the Create Backup action on the admin Backups page.
+          - Let the installed M3U TV web app follow the device orientation.
+          - Point the editor’s update check, Releases links, and Release Logs at this fork. Keep upstream release cache data separate.
+          - Update League CSV to 9.29.1 to resolve a Composer security advisory.
 
-          ```text
-          ghcr.io/ericlvboy-dotcom/m3u-editor@sha256:c05a766da0324634434d4eef27ab49a8b5150074d302582c9d912359ada2efe2
-          ```
+          ## Build and deployment
 
-          [Verified build](https://github.com/ericlvboy-dotcom/m3u-editor/actions/runs/45617053963)
+          - Run security, code quality, and Pest checks before publishing the AMD64 and ARM64 image. Verify the pushed registry digest.
+          - Check upstream daily for changes.
+          - Docker image: `ghcr.io/ericlvboy-dotcom/m3u-editor:latest`
+          - Immutable image: `ghcr.io/ericlvboy-dotcom/m3u-editor@sha256:c05a766da0324634434d4eef27ab49a8b5150074d302582c9d912359ada2efe2`
+
+          [Full fork diff](https://github.com/ericlvboy-dotcom/m3u-editor/compare/f5ae6de6c...a2971a6d9) · [Verified build](https://github.com/ericlvboy-dotcom/m3u-editor/actions/runs/45617053963)
           NOTES
