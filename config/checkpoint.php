@@ -1,6 +1,7 @@
 <?php
 
 use Checkpoint\Checks;
+use Composer\InstalledVersions;
 
 return [
 
@@ -58,8 +59,8 @@ return [
         'whitelist' => [
             'andreapollastri/checkpoint',
             // Promote the reviewed 9.29.1 security patch (PKSA-kwst-yd6p-pksp) during the freshness window.
-            ...(\Composer\InstalledVersions::isInstalled('league/csv')
-                && \Composer\InstalledVersions::getPrettyVersion('league/csv') === '9.29.1'
+            ...(InstalledVersions::isInstalled('league/csv')
+                && InstalledVersions::getPrettyVersion('league/csv') === '9.29.1'
                     ? ['league/csv']
                     : []),
             // 3.0.55 was the security patch for GHSA-m557-wrgg-6rp4 (SSRF via AIA in X.509 validation)
