@@ -62,6 +62,18 @@ class M3uTvWebAppController extends Controller
             $headers['Cross-Origin-Embedder-Policy'] = 'credentialless';
         }
 
+        if ($relativePath === 'manifest.json') {
+            $manifest = json_decode((string) file_get_contents($file));
+            if (($manifest->orientation ?? null) === 'portrait-primary') {
+                unset($manifest->orientation);
+
+                return response()->json($manifest, 200, [
+                    'Content-Type' => 'application/manifest+json',
+                    'Cache-Control' => 'no-cache',
+                ]);
+            }
+        }
+
         $response = new BinaryFileResponse($file, 200, $headers);
         $response->isNotModified($request);
 

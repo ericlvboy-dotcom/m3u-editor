@@ -112,11 +112,15 @@ it('prunes once the scheduled backup it follows exists', function () {
     Storage::disk('local')->assertExists($replacement);
 });
 
-it('shows backup creation on the admin backups page', function () {
+it('starts backup creation from the admin backups page', function () {
+    Bus::fake();
     $this->actingAs(User::factory()->admin()->create());
 
     Livewire::test(Backups::class)
         ->assertSuccessful()
         ->assertSeeText('Actions')
-        ->assertSeeText('Create Backup');
+        ->assertActionExists('Create Backup')
+        ->callAction('Create Backup', data: ['include_files' => false]);
+
+    Bus::assertDispatched(CreateBackup::class);
 });
