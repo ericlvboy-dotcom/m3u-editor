@@ -121,6 +121,12 @@ class XtreamCategoryService
             }
         }
 
+        $outputPlaylist = $playlist instanceof PlaylistAlias ? $playlist->getEffectivePlaylist() : $playlist;
+        if ($outputPlaylist instanceof MergedPlaylist && $outputPlaylist->live_group_sort === 'az'
+            && ! ($playlist instanceof PlaylistAlias && $playlist->hasCustomLiveGroupSort())) {
+            usort($categories, fn (array $a, array $b): int => strnatcasecmp($a['category_name'], $b['category_name']));
+        }
+
         return ['categories' => $categories, 'canonical' => $canonicalById, 'members' => $members];
     }
 

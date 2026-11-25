@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Groups\Pages;
 
 use App\Filament\Resources\Groups\GroupResource;
+use App\Filament\Support\LivePlaylistOutputFields;
 use App\Jobs\GroupFindAndReplace;
 use App\Jobs\GroupFindAndReplaceReset;
 use App\Models\MergedPlaylist;
@@ -31,6 +32,7 @@ class ListGroups extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
+            LivePlaylistOutputFields::mergedSortAction(fn () => $this->activeTab),
             CreateAction::make()
                 ->using(function (array $data, string $model): Model {
                     $data['user_id'] = auth()->id();

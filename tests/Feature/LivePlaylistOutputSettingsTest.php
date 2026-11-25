@@ -99,3 +99,48 @@ it('shows a merged playlist in both live management tables', function () {
         ->assertCanSeeTableRecords([$group])
         ->assertCanNotSeeTableRecords([$otherGroup]);
 });
+
+it('sorts merged live groups and their channels independently in the exported playlist', function () {
+    $user = User::factory()->create();
+    $source = Playlist::factory()->for($user)->create();
+    $merged = MergedPlaylist::factory()->for($user)->create();
+    $merged->playlists()->attach($source->id, ['include_live' => true]);
+
+    foreach (['Zulu', 'Alpha'] as $groupOrder => $groupName) {
+        $group = Group::factory()->for($user)->for($source)->create([
+            'name' => $groupName,
+            'sort_order' => $groupOrder + 1,
+            'type' => 'live',
+        ]);
+
+        foreach (['Two', 'One'] as $channelOrder => $title) {
+            Channel::factory()->for($user)->for($source)->for($group)->create([
+                'title' => "$groupName $title",
+                'name' => "$groupName $title",
+                'name_custom' => null,
+                'title_custom' => null,
+                'sort' => $channelOrder + 1,
+                'enabled' => true,
+                'is_vod' => false,
+            ]);
+        }
+    }
+
+    $titles = function () use ($merged): array {
+        $content = $this->get(route('playlist.generate', ['uuid' => $merged->uuid]))->assertOk()->streamedContent();
+        preg_match_all('/tvg-name="([^"]+)"/', $content, $matches);
+
+        return $matches[1];
+    };
+
+    expect($titles())->toBe(['Zulu Two', 'Zulu One', 'Alpha Two', 'Alpha One']);
+
+    $merged->update(['live_group_sort' => 'az']);
+    expect($titles())->toBe(['Alpha Two', 'Alpha One', 'Zulu Two', 'Zulu One']);
+
+    $merged->update(['live_channel_sort' => 'az']);
+    expect($titles())->toBe(['Alpha One', 'Alpha Two', 'Zulu One', 'Zulu Two']);
+
+    $merged->update(['live_group_sort' => 'default']);
+    expect($titles())->toBe(['Zulu One', 'Zulu Two', 'Alpha One', 'Alpha Two']);
+});

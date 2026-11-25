@@ -16,6 +16,7 @@ use App\Models\PlaylistAlias;
 use App\Models\PlaylistAuth;
 use App\Services\ChannelNumberSequence;
 use App\Services\PlaylistUrlService;
+use App\Services\XtreamCategoryService;
 use App\Support\LiveGroupName;
 use Illuminate\Http\Request;
 use Illuminate\Support\LazyCollection;
@@ -854,13 +855,17 @@ class PlaylistGenerateController extends Controller
         $isCustomContext = $playlist instanceof CustomPlaylist
             || ($playlist instanceof PlaylistAlias && ! empty($playlist->custom_playlist_id));
 
+        $outputPlaylist = $playlist instanceof PlaylistAlias ? $playlist->getEffectivePlaylist() : $playlist;
+        $hasMergedLiveSort = $isVod !== true && $outputPlaylist instanceof MergedPlaylist
+            && ($outputPlaylist->live_group_sort === 'az' || $outputPlaylist->live_channel_sort === 'az');
+
         // Optional flat channel number ordering, ahead of any group ordering. Channels
         // without a number (NULL or 0, matching the output's "no number" check) go last
         // on every driver, then fall through to the standard ordering below. A custom
         // playlist's pivot number wins when set, as it does for tvg-chno. 0 is folded
         // into NULL so unnumbered channels tie here regardless of driver NULL ordering.
         // Sub-channels ("5.1") follow their major number, from the same source as it.
-        if ($playlist->sort_by_channel_number) {
+        if ($playlist->sort_by_channel_number && ! $hasMergedLiveSort) {
             if ($isCustomContext) {
                 $query->orderByRaw('CASE WHEN COALESCE(NULLIF(channel_custom_playlist.channel_number, 0), NULLIF(channels.channel, 0)) IS NULL THEN 1 ELSE 0 END')
                     ->orderByRaw('COALESCE(NULLIF(channel_custom_playlist.channel_number, 0), NULLIF(channels.channel, 0))')
@@ -931,6 +936,25 @@ class PlaylistGenerateController extends Controller
                     'CASE channels.group_internal '.implode(' ', $whenClauses)." ELSE {$elseValue} END",
                     $order
                 );
+            }
+
+            if ($hasMergedLiveSort) {
+                $index = XtreamCategoryService::liveCategoryIndex($playlist);
+                $ranks = array_flip(array_column($index['categories'], 'category_id'));
+                if ($index['canonical'] !== []) {
+                    $cases = [];
+                    foreach ($index['canonical'] as $id => $canonicalId) {
+                        // Category IDs and ranks are database integers.
+                        $cases[] = 'WHEN '.(int) $id.' THEN '.(int) $ranks[$canonicalId];
+                    }
+                    $query->orderByRaw(
+                        'CASE WHEN channels.is_vod THEN NULL ELSE CASE COALESCE(parent_groups.id, groups.id) '
+                        .implode(' ', $cases).' ELSE '.count($ranks).' END END'
+                    );
+                }
+                if ($outputPlaylist->live_channel_sort === 'az') {
+                    $query->orderByRaw("CASE WHEN channels.is_vod THEN NULL ELSE LOWER(COALESCE(channels.title_custom, channels.title, '')) END");
+                }
             }
 
             // Standard ordering for non-custom playlists (merged groups rank by the parent,
