@@ -44,8 +44,8 @@ it('loads and saves the merged playlist alphabetical sorting switches', function
     ]);
 
     Livewire::test(EditMergedPlaylist::class, ['record' => $merged->getRouteKey()])
-        ->assertFormSet(['live_group_sort' => true, 'live_channel_sort' => false])
-        ->fillForm(['live_group_sort' => false, 'live_channel_sort' => true])
+        ->assertFormSet(['sort_live_groups_alpha' => true, 'sort_live_channels_alpha' => false])
+        ->fillForm(['sort_live_groups_alpha' => false, 'sort_live_channels_alpha' => true])
         ->call('save')
         ->assertHasNoFormErrors();
 

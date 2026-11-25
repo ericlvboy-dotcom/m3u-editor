@@ -25,20 +25,25 @@ final class LivePlaylistOutputFields
     public static function sortToggles(): array
     {
         return [
-            Toggle::make('live_group_sort')
+            Toggle::make('sort_live_groups_alpha')
                 ->label(__('Sort live groups A–Z'))
                 ->helperText(__('When off, use the existing group order.'))
                 ->inline(false)
-                ->default(false)
-                ->afterStateHydrated(fn (Toggle $component, mixed $state) => $component->state($state === 'az'))
-                ->dehydrateStateUsing(fn (bool $state): string => $state ? 'az' : 'default'),
-            Toggle::make('live_channel_sort')
+                ->default(false),
+            Toggle::make('sort_live_channels_alpha')
                 ->label(__('Sort live channels A–Z within each group'))
                 ->helperText(__('When off, use the existing channel order.'))
                 ->inline(false)
-                ->default(false)
-                ->afterStateHydrated(fn (Toggle $component, mixed $state) => $component->state($state === 'az'))
-                ->dehydrateStateUsing(fn (bool $state): string => $state ? 'az' : 'default'),
+                ->default(false),
         ];
+    }
+
+    public static function storeSortToggles(array $data): array
+    {
+        $data['live_group_sort'] = ($data['sort_live_groups_alpha'] ?? false) ? 'az' : 'default';
+        $data['live_channel_sort'] = ($data['sort_live_channels_alpha'] ?? false) ? 'az' : 'default';
+        unset($data['sort_live_groups_alpha'], $data['sort_live_channels_alpha']);
+
+        return $data;
     }
 }

@@ -4,6 +4,7 @@ namespace App\Filament\Resources\MergedPlaylists\Pages;
 
 use App\Filament\Concerns\HasDvrAndRequestFormHooks;
 use App\Filament\Resources\MergedPlaylists\MergedPlaylistResource;
+use App\Filament\Support\LivePlaylistOutputFields;
 use App\Models\MergedPlaylist;
 use App\Services\EpgCacheService;
 use Filament\Actions\DeleteAction;
@@ -28,6 +29,9 @@ class EditMergedPlaylist extends EditRecord
         /** @var MergedPlaylist $record */
         $record = $this->getRecord();
 
+        $data['sort_live_groups_alpha'] = $record->live_group_sort === 'az';
+        $data['sort_live_channels_alpha'] = $record->live_channel_sort === 'az';
+
         return $this->fillDvrAndRequestFormData($data, $record);
     }
 
@@ -39,7 +43,7 @@ class EditMergedPlaylist extends EditRecord
      */
     protected function mutateFormDataBeforeSave(array $data): array
     {
-        return $this->stripDvrAndRequestFormData($data);
+        return LivePlaylistOutputFields::storeSortToggles($this->stripDvrAndRequestFormData($data));
     }
 
     /**
