@@ -57,6 +57,11 @@ return [
         'minimum_age_days' => 3,
         'whitelist' => [
             'andreapollastri/checkpoint',
+            // Promote the reviewed 9.29.1 security patch (PKSA-kwst-yd6p-pksp) during the freshness window.
+            ...(\Composer\InstalledVersions::isInstalled('league/csv')
+                && \Composer\InstalledVersions::getPrettyVersion('league/csv') === '9.29.1'
+                    ? ['league/csv']
+                    : []),
             // 3.0.55 was the security patch for GHSA-m557-wrgg-6rp4 (SSRF via AIA in X.509 validation)
             'phpseclib/phpseclib',
             // 7.12.1 was the security patch for CVE-2026-55568 (silent HTTPS-proxy downgrade)
