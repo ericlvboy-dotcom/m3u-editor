@@ -7,6 +7,7 @@ use App\Models\Group;
 use App\Models\MergedPlaylist;
 use App\Models\Playlist;
 use App\Models\User;
+use Livewire\Livewire;
 
 it('regenerates live M3U output with the current prefix and case settings', function () {
     $user = User::factory()->create();
@@ -55,6 +56,9 @@ it('lists one live Xtream category and retains each channel after final names co
         ])->id;
     }
 
+    $m3u = $this->get(route('playlist.generate', ['uuid' => $output->uuid]))->assertOk()->streamedContent();
+    expect(substr_count($m3u, 'group-title="SPORTS"'))->toBe(2);
+
     $credentials = ['username' => $user->name, 'password' => $output->uuid];
     $categories = $this->getJson('/player_api.php?'.http_build_query($credentials + [
         'action' => 'get_live_categories',
@@ -77,6 +81,21 @@ it('shows a merged playlist in both live management tables', function () {
     $merged = MergedPlaylist::factory()->for($user)->create();
     $merged->playlists()->attach($source->id, ['include_live' => true]);
 
-    expect((new ListChannels)->getTabs())->toHaveKey('merged_'.$merged->id)
-        ->and((new ListGroups)->getTabs())->toHaveKey('merged_'.$merged->id);
+    $group = Group::factory()->for($user)->for($source)->create(['type' => 'live']);
+    $channel = Channel::factory()->for($user)->for($source)->for($group)->create(['is_vod' => false]);
+    $otherSource = Playlist::factory()->for($user)->create();
+    $otherGroup = Group::factory()->for($user)->for($otherSource)->create(['type' => 'live']);
+    $otherChannel = Channel::factory()->for($user)->for($otherSource)->for($otherGroup)->create(['is_vod' => false]);
+
+    Livewire::test(ListChannels::class)
+        ->set('activeTab', 'merged_'.$merged->id)
+        ->loadTable()
+        ->assertCanSeeTableRecords([$channel])
+        ->assertCanNotSeeTableRecords([$otherChannel]);
+
+    Livewire::test(ListGroups::class)
+        ->set('activeTab', 'merged_'.$merged->id)
+        ->loadTable()
+        ->assertCanSeeTableRecords([$group])
+        ->assertCanNotSeeTableRecords([$otherGroup]);
 });
