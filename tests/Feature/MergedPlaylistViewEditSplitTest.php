@@ -39,6 +39,7 @@ it('renders the merged playlist edit page without the moved detail tabs', functi
 
 it('loads and saves the merged playlist alphabetical sorting switches', function () {
     $merged = MergedPlaylist::factory()->for($this->user)->create([
+        'user_agent' => 'M3U Editor Test',
         'live_group_sort' => 'az',
         'live_channel_sort' => 'default',
     ]);
