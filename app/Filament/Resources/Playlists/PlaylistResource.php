@@ -2485,6 +2485,23 @@ class PlaylistResource extends Resource implements CopilotResource
                         ->columns(2)
                         ->hidden(fn (Get $get): bool => ! self::autoMergesAnything($get))
                         ->schema([
+                            Select::make('auto_merge_config.live_merged_playlist_id')
+                                ->label(__('Merged Playlist'))
+                                ->options(fn (?Playlist $record) => $record?->mergedPlaylists()
+                                    ->wherePivot('include_live', true)
+                                    ->where('merged_playlists.user_id', auth()->id())
+                                    ->orderBy('merged_playlists.name')
+                                    ->pluck('merged_playlists.name', 'merged_playlists.id') ?? [])
+                                ->visible(fn (Get $get, ?Playlist $record): bool => $record !== null && (bool) $get('auto_merge_channels_enabled'))
+                                ->searchable()
+                                ->live()
+                                ->afterStateUpdated(function (Set $set, mixed $state): void {
+                                    if (filled($state)) {
+                                        $set('auto_merge_deactivate_failover', true);
+                                    }
+                                })
+                                ->columnSpanFull()
+                                ->helperText(__('Match existing and new live channels for failover using the sources in this merged playlist.')),
                             Select::make('auto_merge_config.preferred_playlist_id')
                                 ->label(__('Preferred Playlist (optional)'))
                                 ->options(fn () => Playlist::where('user_id', auth()->id())->pluck('name', 'id'))

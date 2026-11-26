@@ -249,7 +249,8 @@ class SyncListener
         $deactivateFailover = (bool) ($playlist->auto_merge_deactivate_failover ?? false);
         $scrubberAwareMasterSelection = (bool) ($config['scrubber_aware_master_selection'] ?? false);
 
-        ['playlists' => $playlists, 'playlistId' => $effectivePlaylistId] = self::mergeSources($playlist);
+        ['playlists' => $playlists, 'playlistId' => $effectivePlaylistId] = self::mergeSources($playlist, $contentType);
+        $usesMergedLiveSources = $contentType === 'live' && ! empty($config['live_merged_playlist_id']) && $playlists->isNotEmpty();
 
         return new MergeChannels(
             user: $playlist->user,
@@ -260,7 +261,7 @@ class SyncListener
             forceCompleteRemerge: $forceCompleteRemerge,
             preferCatchupAsPrimary: $preferCatchupAsPrimary,
             weightedConfig: self::buildWeightedConfig($config),
-            newChannelsOnly: $newChannelsOnly,
+            newChannelsOnly: ! $usesMergedLiveSources && $newChannelsOnly,
             regexPatterns: ! empty($config['regex_patterns'] ?? []) ? $config['regex_patterns'] : null,
             fallbackMergeConfig: PlaylistService::buildMergeFallbackConfig($config),
             contentType: $contentType,
@@ -295,9 +296,24 @@ class SyncListener
      *
      * @return array{playlists: Collection<int, array{playlist_failover_id: int|string}>, playlistId: int}
      */
-    private static function mergeSources(Playlist $playlist): array
+    private static function mergeSources(Playlist $playlist, ?string $contentType = null): array
     {
         $config = $playlist->auto_merge_config ?? [];
+        $mergedPlaylistId = $config['live_merged_playlist_id'] ?? null;
+
+        if ($contentType === 'live' && $mergedPlaylistId) {
+            $mergedPlaylist = $playlist->mergedPlaylists()
+                ->wherePivot('include_live', true)
+                ->where('merged_playlists.user_id', $playlist->user_id)
+                ->find($mergedPlaylistId);
+
+            return [
+                'playlists' => collect($mergedPlaylist?->sourcePlaylistIds('live') ?? [])
+                    ->map(fn (int $id): array => ['playlist_failover_id' => $id]),
+                'playlistId' => $playlist->id,
+            ];
+        }
+
         $preferredPlaylistId = $config['preferred_playlist_id'] ?? null;
 
         $playlists = collect([['playlist_failover_id' => $playlist->id]]);

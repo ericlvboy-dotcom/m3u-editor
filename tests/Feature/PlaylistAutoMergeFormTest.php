@@ -1,6 +1,7 @@
 <?php
 
 use App\Filament\Resources\Playlists\Pages\EditPlaylist;
+use App\Models\MergedPlaylist;
 use App\Models\Playlist;
 use App\Models\User;
 use Livewire\Livewire;
@@ -33,6 +34,23 @@ it('shows merge sources for series-only auto-merge but not the channel behavior 
         ->assertFormFieldVisible('auto_merge_config.preferred_playlist_id')
         ->assertFormFieldHidden('auto_merge_config.merge_key')
         ->assertFormFieldHidden('auto_merge_config.new_channels_only');
+});
+
+it('saves the merged playlist selected for live auto-merge', function () {
+    $playlist = Playlist::factory()->for($this->user)->create([
+        'user_agent' => 'VLC/3.0.0',
+        'auto_merge_channels_enabled' => true,
+    ]);
+    $merged = MergedPlaylist::factory()->for($this->user)->create();
+    $merged->playlists()->attach($playlist->id, ['include_live' => true]);
+
+    Livewire::test(EditPlaylist::class, ['record' => $playlist->id])
+        ->assertFormFieldVisible('auto_merge_config.live_merged_playlist_id')
+        ->fillForm(['auto_merge_config.live_merged_playlist_id' => $merged->id])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect((int) $playlist->refresh()->auto_merge_config['live_merged_playlist_id'])->toBe($merged->id);
 });
 
 it('saves each content type toggle independently', function () {

@@ -30,6 +30,7 @@ use App\Listeners\SyncListener;
 use App\Models\ChannelScrubber;
 use App\Models\CustomPlaylist;
 use App\Models\Epg;
+use App\Models\MergedPlaylist;
 use App\Models\Playlist;
 use App\Models\SyncRun;
 use App\Models\User;
@@ -169,6 +170,46 @@ it('keeps merging Live by stream ID when only Live is enabled, whatever the VOD 
     expect($jobs)->toHaveCount(1)
         ->and($jobs[0]->contentType)->toBe('live')
         ->and($jobs[0]->mergeKey)->toBe('stream_id');
+});
+
+it('uses the current live members of the selected merged playlist for live auto-merge only', function () {
+    $backup = Playlist::factory()->for($this->user)->createQuietly();
+    $nextBackup = Playlist::factory()->for($this->user)->createQuietly();
+    $vodOnly = Playlist::factory()->for($this->user)->createQuietly();
+    $manual = Playlist::factory()->for($this->user)->createQuietly();
+    $merged = MergedPlaylist::factory()->for($this->user)->create();
+    $merged->playlists()->attach([
+        $nextBackup->id => ['include_live' => true],
+        $backup->id => ['include_live' => true],
+        $this->playlist->id => ['include_live' => true],
+        $vodOnly->id => ['include_live' => false],
+    ]);
+    $this->playlist->update([
+        'auto_merge_channels_enabled' => true,
+        'auto_merge_config' => [
+            'live_merged_playlist_id' => $merged->id,
+            'failover_playlists' => [$manual->id],
+            'merge_vod' => true,
+            'new_channels_only' => true,
+        ],
+    ]);
+
+    [$live, $vod] = SyncListener::getChannelMergeJobs($this->playlist);
+
+    expect($live->playlistId)->toBe($this->playlist->id)
+        ->and($live->playlists->pluck('playlist_failover_id')->all())->toBe([$this->playlist->id, $backup->id, $nextBackup->id])
+        ->and($live->newChannelsOnly)->toBeFalse()
+        ->and($vod->playlists->pluck('playlist_failover_id')->all())->toBe([$this->playlist->id, $manual->id])
+        ->and($vod->newChannelsOnly)->toBeTrue();
+
+    $merged->playlists()->detach($backup->id);
+
+    expect(SyncListener::getMergeJob($this->playlist)->playlists->pluck('playlist_failover_id')->all())
+        ->toBe([$this->playlist->id, $nextBackup->id]);
+
+    $merged->playlists()->updateExistingPivot($this->playlist->id, ['include_live' => false]);
+
+    expect(SyncListener::getMergeJob($this->playlist)->playlists)->toBeEmpty();
 });
 
 it('merges only VOD when only VOD is enabled', function () {

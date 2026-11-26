@@ -1248,7 +1248,7 @@ class PlaylistService
     /**
      * Get the form schema for the "Merge Same ID" action.
      */
-    public static function getMergeFormSchema(string $contentType = 'live'): array
+    public static function getMergeFormSchema(string $contentType = 'live', bool $allowMergedPlaylist = false): array
     {
         $isVod = $contentType === 'vod';
         $isSeries = $contentType === 'series';
@@ -1256,6 +1256,7 @@ class PlaylistService
         $sourceSchema = [
             Select::make('playlist_id')
                 ->required()
+                ->hidden(fn (Get $get): bool => $allowMergedPlaylist && filled($get('merged_playlist_id')))
                 ->columnSpanFull()
                 ->label('Preferred Playlist')
                 ->options(Playlist::where('user_id', auth()->id())->pluck('name', 'id'))
@@ -1264,6 +1265,7 @@ class PlaylistService
                 ->helperText('Select a playlist to prioritize as the master during the merge process.'),
             Repeater::make('failover_playlists')
                 ->label('')
+                ->hidden(fn (Get $get): bool => $allowMergedPlaylist && filled($get('merged_playlist_id')))
                 ->helperText('Select one or more playlists to use as failover source(s).')
                 ->reorderable()
                 ->reorderableWithButtons()
@@ -1282,6 +1284,19 @@ class PlaylistService
                 ->minItems(1)
                 ->defaultItems(1),
         ];
+
+        if ($allowMergedPlaylist) {
+            array_unshift($sourceSchema, Select::make('merged_playlist_id')
+                ->label(__('Merged Playlist'))
+                ->options(fn () => MergedPlaylist::where('user_id', auth()->id())
+                    ->whereHas('playlists', fn (Builder $query) => $query->where('merged_playlist_playlist.include_live', true), '>=', 2)
+                    ->orderBy('name')
+                    ->pluck('name', 'id'))
+                ->searchable()
+                ->live()
+                ->afterStateUpdated(fn (Set $set, mixed $state) => $set('deactivate_failover_channels', filled($state)))
+                ->columnSpanFull());
+        }
 
         if ($isVod) {
             $sourceSchema[] = Select::make('merge_key')
@@ -1551,7 +1566,7 @@ class PlaylistService
     {
         $action = Action::make('merge')
             ->label($contentType === 'series' ? __('Merge Series') : 'Merge Same ID')
-            ->schema(self::getMergeFormSchema($contentType))
+            ->schema(self::getMergeFormSchema($contentType, allowMergedPlaylist: ! $groupScoped && $contentType === 'live'))
             ->requiresConfirmation()
             ->icon('heroicon-o-arrows-pointing-in')
             ->modalIcon('heroicon-o-arrows-pointing-in')
@@ -1584,19 +1599,36 @@ class PlaylistService
                     ? __('Link the same series across playlists, then link their episodes as failovers. Series are matched by TMDB ID (or TVDB ID when TMDB is missing), and episodes by TMDB ID or season and episode number.')
                     : 'Merge all channels with the same ID into a single channel with failover.'
                 )
-                ->action(function (array $data) use ($contentType): void {
+                ->action(function (Action $action, array $data) use ($contentType): void {
+                    $playlistId = $data['playlist_id'] ?? null;
+                    $playlists = collect($data['failover_playlists'] ?? []);
+                    if ($contentType === 'live' && ! empty($data['merged_playlist_id'])) {
+                        $mergedPlaylist = MergedPlaylist::where('user_id', auth()->id())->find($data['merged_playlist_id']);
+                        $sourceIds = $mergedPlaylist?->sourcePlaylistIds('live') ?? [];
+                        if (count($sourceIds) < 2) {
+                            Notification::make()
+                                ->title(__('Select a merged playlist with at least two live sources.'))
+                                ->danger()
+                                ->send();
+                            $action->halt();
+                        }
+
+                        $playlistId = array_shift($sourceIds);
+                        $playlists = collect($sourceIds);
+                    }
+
                     $job = $contentType === 'series'
                         ? new MergeEpisodes(
                             user: auth()->user(),
-                            playlists: collect($data['failover_playlists']),
-                            playlistId: $data['playlist_id'],
+                            playlists: $playlists,
+                            playlistId: $playlistId,
                             deactivateFailoverEpisodes: $data['deactivate_failover_channels'] ?? false,
                             forceCompleteRemerge: $data['force_complete_remerge'] ?? false,
                         )
                         : new MergeChannels(
                             user: auth()->user(),
-                            playlists: collect($data['failover_playlists']),
-                            playlistId: $data['playlist_id'],
+                            playlists: $playlists,
+                            playlistId: $playlistId,
                             checkResolution: $data['by_resolution'] ?? false,
                             deactivateFailoverChannels: $data['deactivate_failover_channels'] ?? false,
                             forceCompleteRemerge: $data['force_complete_remerge'] ?? false,

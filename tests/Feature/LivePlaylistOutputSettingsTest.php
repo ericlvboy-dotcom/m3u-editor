@@ -2,11 +2,14 @@
 
 use App\Filament\Resources\Channels\Pages\ListChannels;
 use App\Filament\Resources\Groups\Pages\ListGroups;
+use App\Jobs\MergeChannels;
 use App\Models\Channel;
 use App\Models\Group;
 use App\Models\MergedPlaylist;
 use App\Models\Playlist;
 use App\Models\User;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Notification;
 use Livewire\Livewire;
 
 it('regenerates live M3U output with the current prefix and case settings', function () {
@@ -74,20 +77,74 @@ it('lists one live Xtream category and retains each channel after final names co
         ->and(array_unique(array_column($streams, 'category_id')))->toBe([$categories[0]['category_id']]);
 })->with([false, true]);
 
-it('shows source playlists without merged playlist tabs in live management', function () {
+it('shows a merged playlist in both live management tables', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
     $source = Playlist::factory()->for($user)->create();
     $merged = MergedPlaylist::factory()->for($user)->create();
     $merged->playlists()->attach($source->id, ['include_live' => true]);
 
-    $groupTabs = Livewire::test(ListGroups::class)->instance()->getTabs();
-    $channelTabs = Livewire::test(ListChannels::class)->instance()->getTabs();
+    $group = Group::factory()->for($user)->for($source)->create(['type' => 'live']);
+    $channel = Channel::factory()->for($user)->for($source)->for($group)->create(['is_vod' => false]);
+    $otherSource = Playlist::factory()->for($user)->create();
+    $otherGroup = Group::factory()->for($user)->for($otherSource)->create(['type' => 'live']);
+    $otherChannel = Channel::factory()->for($user)->for($otherSource)->for($otherGroup)->create(['is_vod' => false]);
 
-    expect($groupTabs)->toHaveKey($source->id)
-        ->not->toHaveKey('merged_'.$merged->id)
-        ->and($channelTabs)->toHaveKey('playlist_'.$source->id)
-        ->not->toHaveKey('merged_'.$merged->id);
+    Livewire::test(ListChannels::class)
+        ->set('activeTab', 'merged_'.$merged->id)
+        ->loadTable()
+        ->assertCanSeeTableRecords([$channel])
+        ->assertCanNotSeeTableRecords([$otherChannel]);
+
+    Livewire::test(ListGroups::class)
+        ->set('activeTab', 'merged_'.$merged->id)
+        ->loadTable()
+        ->assertCanSeeTableRecords([$group])
+        ->assertCanNotSeeTableRecords([$otherGroup]);
+});
+
+it('merges three live sources into one exported channel with two ordered backups', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $merged = MergedPlaylist::factory()->for($user)->create();
+    $sources = Playlist::factory()->for($user)->count(3)->createQuietly();
+    $merged->playlists()->attach($sources->modelKeys(), ['include_live' => true]);
+    $channels = $sources->map(function (Playlist $source) use ($user): Channel {
+        $group = Group::factory()->for($user)->for($source)->create(['name' => 'News', 'type' => 'live']);
+
+        return Channel::factory()->for($user)->for($source)->for($group)->create([
+            'name' => 'Local News',
+            'title' => 'Local News',
+            'stream_id' => '100',
+            'url' => "http://source-{$source->id}.test/live/100.ts",
+            'is_vod' => false,
+            'enabled' => true,
+        ]);
+    });
+
+    Bus::fake([MergeChannels::class]);
+    Notification::fake();
+
+    Livewire::test(ListChannels::class)
+        ->mountAction('merge')
+        ->set('mountedActions.0.data.merged_playlist_id', $merged->id)
+        ->assertSet('mountedActions.0.data.deactivate_failover_channels', true)
+        ->callMountedAction()
+        ->assertHasNoActionErrors();
+
+    Bus::assertDispatched(MergeChannels::class, function (MergeChannels $job) use ($sources): bool {
+        return $job->playlistId === $sources[0]->id
+            && $job->playlists->all() === [$sources[1]->id, $sources[2]->id]
+            && $job->deactivateFailoverChannels;
+    });
+
+    $job = Bus::dispatched(MergeChannels::class)->sole();
+    Channel::withoutEvents(fn () => $job->handle());
+
+    expect($channels[0]->failoverChannels()->get()->modelKeys())->toBe([$channels[1]->id, $channels[2]->id]);
+
+    $output = $this->get(route('playlist.generate', ['uuid' => $merged->uuid]))->assertOk()->streamedContent();
+    expect(substr_count($output, 'tvg-name="Local News"'))->toBe(1);
 });
 
 it('sorts merged live groups and their channels independently in the exported playlist', function () {
